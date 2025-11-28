@@ -276,6 +276,8 @@
             display: flex;
             gap: 30px;
             margin: 20px 0;
+            flex-wrap: wrap;
+            justify-content: center;
         }
 
         .calibration-item {
@@ -331,6 +333,16 @@
             font-size: 1.2rem;
             color: #afc;
             margin: 10px 0;
+            min-height: 30px;
+        }
+
+        /* Talking warning */
+        .talking-warning {
+            font-size: 1.1rem;
+            color: #f66;
+            margin: 5px 0;
+            min-height: 25px;
+            font-weight: bold;
         }
 
         /* Settings panel */
@@ -358,6 +370,13 @@
             margin-bottom: 10px;
         }
 
+        /* Timing info */
+        .timing-info {
+            font-size: 0.9rem;
+            color: #aac;
+            margin: 10px 0;
+        }
+
         /* Completion screen */
         .completion-stats {
             display: grid;
@@ -382,6 +401,48 @@
             color: #aac;
             margin-top: 5px;
         }
+
+        /* Calibration results */
+        .calibration-results {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+            max-width: 500px;
+        }
+
+        .calibration-results h3 {
+            color: #8af;
+            margin-bottom: 15px;
+        }
+
+        .result-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .result-row:last-child {
+            border-bottom: none;
+        }
+
+        .result-label {
+            color: #aac;
+        }
+
+        .result-value {
+            color: #fff;
+            font-weight: bold;
+        }
+
+        .adjustment-hint {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(100, 150, 255, 0.1);
+            border-radius: 10px;
+            font-size: 0.95rem;
+        }
     </style>
 </head>
 <body>
@@ -390,7 +451,7 @@
     <div class="container">
         <!-- Welcome Screen -->
         <div class="screen active" id="welcome-screen">
-            <h1>🌌 Breathing in Space</h1>
+            <h1>Breathing in Space</h1>
             <p>Welcome to your guided meditation journey through the cosmos.<br>
             We'll practice breathing exercises together, with visual guidance to help you sync your breath.</p>
             <p>This experience uses your microphone to detect your breathing patterns.<br>
@@ -400,7 +461,7 @@
 
         <!-- Microphone Permission Screen -->
         <div class="screen" id="permission-screen">
-            <h2>🎤 Microphone Access</h2>
+            <h2>Microphone Access</h2>
             <p>To detect your breathing, we need access to your microphone.<br>
             Your audio is processed locally and never leaves your device.</p>
             <button class="btn" id="permission-btn">Allow Microphone</button>
@@ -409,7 +470,7 @@
 
         <!-- Calibration Screen -->
         <div class="screen" id="calibration-screen">
-            <h2>🔧 Calibration Setup</h2>
+            <h2>Calibration Setup</h2>
 
             <div class="calibration-status">
                 <div class="calibration-item">
@@ -421,8 +482,12 @@
                     <span>Talking</span>
                 </div>
                 <div class="calibration-item">
-                    <div class="calibration-dot" id="cal-breathing-dot"></div>
-                    <span>Breathing</span>
+                    <div class="calibration-dot" id="cal-breathin-dot"></div>
+                    <span>Breathe In</span>
+                </div>
+                <div class="calibration-item">
+                    <div class="calibration-dot" id="cal-breathout-dot"></div>
+                    <span>Breathe Out</span>
                 </div>
             </div>
 
@@ -439,25 +504,45 @@
                 <div class="audio-level-fill" id="audio-level-fill"></div>
             </div>
 
+            <div class="timing-info" id="timing-info"></div>
+
             <div class="progress-container">
                 <div class="progress-bar">
                     <div class="progress-fill" id="calibration-progress"></div>
                 </div>
-                <div class="progress-text" id="calibration-progress-text">Step 1 of 3</div>
+                <div class="progress-text" id="calibration-progress-text">Step 1 of 4</div>
             </div>
-
-            <button class="btn" id="calibration-btn" style="display: none;">Continue</button>
         </div>
 
         <!-- Ready Screen -->
         <div class="screen" id="ready-screen">
-            <h2>✨ Calibration Complete!</h2>
-            <p>Great! We've learned your breathing patterns.<br>
-            Now let's begin the guided meditation.</p>
+            <h2>Calibration Complete!</h2>
+
+            <div class="calibration-results">
+                <h3>Your Breathing Profile</h3>
+                <div class="result-row">
+                    <span class="result-label">Inhale Duration:</span>
+                    <span class="result-value" id="result-inhale">0.0s</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">Exhale Duration:</span>
+                    <span class="result-value" id="result-exhale">0.0s</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">Target Inhale:</span>
+                    <span class="result-value" id="result-target-in">4.0s</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">Target Exhale:</span>
+                    <span class="result-value" id="result-target-out">4.0s</span>
+                </div>
+                <div class="adjustment-hint" id="adjustment-hint"></div>
+            </div>
+
             <p>You'll see two spheres:<br>
             <strong style="color: #8af;">Blue</strong> - Follow this guide<br>
-            <strong style="color: #8f8;">Green</strong> - Your actual breathing</p>
-            <p>Try to match your breathing to the guide sphere.</p>
+            <strong style="color: #8f8;">Green</strong> - Your detected breathing</p>
+            <p>We'll gradually adjust to help you reach the target pace.</p>
             <button class="btn" id="begin-meditation-btn">Start Meditation</button>
         </div>
 
@@ -486,6 +571,7 @@
 
             <div class="timer" id="meditation-timer">4</div>
 
+            <div class="talking-warning" id="talking-warning"></div>
             <div class="feedback" id="feedback"></div>
 
             <button class="btn secondary" id="stop-meditation-btn" style="margin-top: 20px;">End Session</button>
@@ -493,7 +579,7 @@
 
         <!-- Completion Screen -->
         <div class="screen" id="completion-screen">
-            <h2>🌟 Session Complete!</h2>
+            <h2>Session Complete!</h2>
             <p>Wonderful job on completing your breathing meditation.</p>
 
             <div class="completion-stats">
@@ -524,13 +610,15 @@
         // CONFIGURATION
         // ============================================
         const CONFIG = {
-            breatheInDuration: 4000,    // ms
-            breatheOutDuration: 4000,   // ms
-            holdDuration: 1000,         // ms between phases
+            targetInhaleDuration: 4000,     // ms - target
+            targetExhaleDuration: 4000,     // ms - target
+            holdDuration: 1000,             // ms between phases
             totalRounds: 5,
-            calibrationDuration: 5000,  // ms per calibration step
-            audioSmoothingFactor: 0.3,
-            breathDetectionThreshold: 0.15
+            calibrationDuration: 6000,      // ms per calibration step
+            audioSmoothingFactor: 0.2,
+            breathThresholdMultiplier: 1.5, // Above silence * this = breathing
+            talkingVarianceThreshold: 0.02, // High variance = talking
+            adaptationRate: 0.5             // How fast to adapt to target (0.5 = average)
         };
 
         // ============================================
@@ -544,16 +632,34 @@
             calibration: {
                 silence: { level: 0, variance: 0 },
                 talking: { level: 0, variance: 0 },
-                breathingIn: { level: 0, pattern: [] },
-                breathingOut: { level: 0, pattern: [] }
+                breathingIn: { level: 0, duration: 0 },
+                breathingOut: { level: 0, duration: 0 }
             },
+            // Breathing detection
+            breathThreshold: 0.1,
+            isBreathing: false,
+            breathStartTime: 0,
+            lastBreathDuration: 0,
+            currentBreathPhase: 'idle', // 'in', 'out', 'idle'
+            // User sphere animation
+            userSpherePercent: 0,
+            userSphereTarget: 0,
+            userAnimationStart: 0,
+            userAnimationDuration: 4000,
+            // Adaptive timing
+            currentInhaleDuration: 4000,
+            currentExhaleDuration: 4000,
+            // Session state
             currentPhase: 'idle',
             currentRound: 0,
             meditationStartTime: 0,
             syncScores: [],
             totalBreaths: 0,
             isListening: false,
-            smoothedLevel: 0
+            smoothedLevel: 0,
+            // Recent audio samples for variance calculation
+            recentSamples: [],
+            maxRecentSamples: 20
         };
 
         // ============================================
@@ -615,7 +721,53 @@
             state.smoothedLevel = state.smoothedLevel * (1 - CONFIG.audioSmoothingFactor) +
                                   rms * CONFIG.audioSmoothingFactor;
 
+            // Track recent samples for variance calculation
+            state.recentSamples.push(state.smoothedLevel);
+            if (state.recentSamples.length > state.maxRecentSamples) {
+                state.recentSamples.shift();
+            }
+
             return state.smoothedLevel;
+        }
+
+        function getCurrentVariance() {
+            if (state.recentSamples.length < 5) return 0;
+            const avg = state.recentSamples.reduce((a, b) => a + b, 0) / state.recentSamples.length;
+            return state.recentSamples.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / state.recentSamples.length;
+        }
+
+        function isTalkingDetected() {
+            const level = state.smoothedLevel;
+            const variance = getCurrentVariance();
+            const silenceLevel = state.calibration.silence.level;
+            const talkingLevel = state.calibration.talking.level;
+            const talkingVariance = state.calibration.talking.variance;
+
+            // Talking has high level AND high variance (speech varies a lot)
+            // Breathing has moderate level but lower, steadier variance
+            const isHighLevel = level > (silenceLevel + talkingLevel) / 2;
+            const isHighVariance = variance > talkingVariance * 0.5;
+
+            return isHighLevel && isHighVariance;
+        }
+
+        function detectBreathingState(level) {
+            const threshold = state.breathThreshold;
+            const wasBreathing = state.isBreathing;
+
+            state.isBreathing = level > threshold;
+
+            // Detect breath start
+            if (state.isBreathing && !wasBreathing) {
+                state.breathStartTime = Date.now();
+            }
+
+            // Detect breath end
+            if (!state.isBreathing && wasBreathing && state.breathStartTime > 0) {
+                state.lastBreathDuration = Date.now() - state.breathStartTime;
+            }
+
+            return state.isBreathing;
         }
 
         function monitorAudio() {
@@ -681,17 +833,24 @@
             // Step 2: Talking
             await calibrateTalking();
 
-            // Step 3: Breathing
-            await calibrateBreathing();
+            // Step 3: Breathing In
+            await calibrateBreathingIn();
 
-            // Show ready screen
+            // Step 4: Breathing Out
+            await calibrateBreathingOut();
+
+            // Calculate breath threshold
+            state.breathThreshold = state.calibration.silence.level * CONFIG.breathThresholdMultiplier;
+
+            // Show results and ready screen
+            showCalibrationResults();
             showScreen('ready-screen');
         }
 
         function calibrateSilence() {
             return new Promise((resolve) => {
                 document.getElementById('cal-silence-dot').classList.add('active');
-                updateCalibrationProgress(1);
+                updateCalibrationProgress(1, 4);
 
                 speak("Let's start by calibrating silence. Please remain quiet and still for a few seconds.", () => {
                     document.getElementById('calibration-instruction').textContent =
@@ -726,7 +885,7 @@
         function calibrateTalking() {
             return new Promise((resolve) => {
                 document.getElementById('cal-talking-dot').classList.add('active');
-                updateCalibrationProgress(2);
+                updateCalibrationProgress(2, 4);
 
                 speak("Now, please speak normally for a few seconds. Count from one to ten, or say anything you like.", () => {
                     document.getElementById('calibration-instruction').textContent =
@@ -748,7 +907,7 @@
                             document.getElementById('cal-talking-dot').classList.remove('active');
                             document.getElementById('cal-talking-dot').classList.add('complete');
 
-                            speak("Thank you. Now we'll calibrate your breathing.", resolve);
+                            speak("Thank you. Now let's measure your breathing.", resolve);
                         }
                     };
 
@@ -757,78 +916,233 @@
             });
         }
 
-        function calibrateBreathing() {
+        function calibrateBreathingIn() {
             return new Promise((resolve) => {
-                document.getElementById('cal-breathing-dot').classList.add('active');
-                updateCalibrationProgress(3);
+                document.getElementById('cal-breathin-dot').classList.add('active');
+                updateCalibrationProgress(3, 4);
 
-                // First, calibrate breathing in
-                speak("Take a slow, deep breath in through your nose. Breathe in now.", () => {
+                speak("Take a slow, deep breath in through your nose. Start when you're ready and breathe in completely.", () => {
                     document.getElementById('calibration-instruction').textContent =
-                        "Breathe IN slowly...";
+                        "Breathe IN slowly... (we're measuring)";
 
-                    animateSphere('calibration-fill', 0, 100, 4000);
-
-                    const breathInSamples = [];
+                    // Wait for breath to start, then measure duration
+                    let breathStarted = false;
+                    let breathStartTime = 0;
+                    let breathEndTime = 0;
+                    let peakLevel = 0;
+                    const samples = [];
                     const startTime = Date.now();
+                    const maxWaitTime = 10000; // 10 seconds max
 
-                    const collectIn = () => {
-                        if (Date.now() - startTime < 4000) {
-                            breathInSamples.push(getAudioLevel());
-                            setTimeout(collectIn, 50);
-                        } else {
-                            state.calibration.breathingIn = {
-                                level: breathInSamples.reduce((a, b) => a + b, 0) / breathInSamples.length,
-                                pattern: breathInSamples
-                            };
+                    const tempThreshold = state.calibration.silence.level * 1.3;
 
-                            // Now calibrate breathing out
-                            speak("And now slowly breathe out through your mouth.", () => {
-                                document.getElementById('calibration-instruction').textContent =
-                                    "Breathe OUT slowly...";
+                    const monitor = () => {
+                        const level = getAudioLevel();
+                        samples.push(level);
 
-                                animateSphere('calibration-fill', 100, 0, 4000);
+                        // Update sphere based on current level
+                        const normalizedLevel = Math.min(1, Math.max(0,
+                            (level - state.calibration.silence.level) /
+                            (state.calibration.talking.level - state.calibration.silence.level + 0.01)
+                        ));
+                        setSpherePercent('calibration-fill', normalizedLevel * 100);
 
-                                const breathOutSamples = [];
-                                const outStartTime = Date.now();
+                        if (!breathStarted && level > tempThreshold) {
+                            breathStarted = true;
+                            breathStartTime = Date.now();
+                        }
 
-                                const collectOut = () => {
-                                    if (Date.now() - outStartTime < 4000) {
-                                        breathOutSamples.push(getAudioLevel());
-                                        setTimeout(collectOut, 50);
-                                    } else {
-                                        state.calibration.breathingOut = {
-                                            level: breathOutSamples.reduce((a, b) => a + b, 0) / breathOutSamples.length,
-                                            pattern: breathOutSamples
-                                        };
+                        if (breathStarted) {
+                            if (level > peakLevel) peakLevel = level;
 
-                                        document.getElementById('cal-breathing-dot').classList.remove('active');
-                                        document.getElementById('cal-breathing-dot').classList.add('complete');
+                            // Check if breath ended (level dropped significantly from peak)
+                            if (level < peakLevel * 0.4 && Date.now() - breathStartTime > 1000) {
+                                breathEndTime = Date.now();
+                                const duration = breathEndTime - breathStartTime;
 
-                                        speak("Excellent! Calibration complete.", resolve);
-                                    }
+                                state.calibration.breathingIn = {
+                                    level: peakLevel,
+                                    duration: duration
                                 };
 
-                                setTimeout(collectOut, 500);
-                            });
+                                document.getElementById('timing-info').textContent =
+                                    `Inhale detected: ${(duration / 1000).toFixed(1)} seconds`;
+
+                                document.getElementById('cal-breathin-dot').classList.remove('active');
+                                document.getElementById('cal-breathin-dot').classList.add('complete');
+
+                                speak(`Good. Your inhale was ${(duration / 1000).toFixed(1)} seconds.`, resolve);
+                                return;
+                            }
+                        }
+
+                        if (Date.now() - startTime < maxWaitTime) {
+                            setTimeout(monitor, 50);
+                        } else {
+                            // Timeout - use default
+                            state.calibration.breathingIn = {
+                                level: Math.max(...samples),
+                                duration: 4000
+                            };
+                            document.getElementById('cal-breathin-dot').classList.remove('active');
+                            document.getElementById('cal-breathin-dot').classList.add('complete');
+                            speak("Using default timing. Let's continue.", resolve);
                         }
                     };
 
-                    setTimeout(collectIn, 500);
+                    setTimeout(monitor, 500);
                 });
             });
         }
 
-        function updateCalibrationProgress(step) {
-            const progress = (step / 3) * 100;
+        function calibrateBreathingOut() {
+            return new Promise((resolve) => {
+                document.getElementById('cal-breathout-dot').classList.add('active');
+                updateCalibrationProgress(4, 4);
+
+                // Reset sphere to full
+                setSpherePercent('calibration-fill', 100);
+
+                speak("Now slowly breathe out through your mouth. Start when you're ready.", () => {
+                    document.getElementById('calibration-instruction').textContent =
+                        "Breathe OUT slowly... (we're measuring)";
+
+                    let breathStarted = false;
+                    let breathStartTime = 0;
+                    let peakLevel = 0;
+                    const samples = [];
+                    const startTime = Date.now();
+                    const maxWaitTime = 10000;
+
+                    const tempThreshold = state.calibration.silence.level * 1.3;
+
+                    const monitor = () => {
+                        const level = getAudioLevel();
+                        samples.push(level);
+
+                        // Update sphere - goes from 100 to 0 based on time since breath started
+                        if (breathStarted) {
+                            const elapsed = Date.now() - breathStartTime;
+                            const estimatedDuration = 4000; // rough estimate
+                            const percent = Math.max(0, 100 - (elapsed / estimatedDuration) * 100);
+                            setSpherePercent('calibration-fill', percent);
+                        }
+
+                        if (!breathStarted && level > tempThreshold) {
+                            breathStarted = true;
+                            breathStartTime = Date.now();
+                        }
+
+                        if (breathStarted) {
+                            if (level > peakLevel) peakLevel = level;
+
+                            // Check if breath ended
+                            if (level < peakLevel * 0.3 && Date.now() - breathStartTime > 1000) {
+                                const duration = Date.now() - breathStartTime;
+
+                                state.calibration.breathingOut = {
+                                    level: peakLevel,
+                                    duration: duration
+                                };
+
+                                setSpherePercent('calibration-fill', 0);
+
+                                document.getElementById('timing-info').textContent =
+                                    `Exhale detected: ${(duration / 1000).toFixed(1)} seconds`;
+
+                                document.getElementById('cal-breathout-dot').classList.remove('active');
+                                document.getElementById('cal-breathout-dot').classList.add('complete');
+
+                                speak(`Your exhale was ${(duration / 1000).toFixed(1)} seconds. Calibration complete.`, resolve);
+                                return;
+                            }
+                        }
+
+                        if (Date.now() - startTime < maxWaitTime) {
+                            setTimeout(monitor, 50);
+                        } else {
+                            state.calibration.breathingOut = {
+                                level: Math.max(...samples),
+                                duration: 4000
+                            };
+                            document.getElementById('cal-breathout-dot').classList.remove('active');
+                            document.getElementById('cal-breathout-dot').classList.add('complete');
+                            speak("Using default timing. Calibration complete.", resolve);
+                        }
+                    };
+
+                    setTimeout(monitor, 500);
+                });
+            });
+        }
+
+        function showCalibrationResults() {
+            const measuredIn = state.calibration.breathingIn.duration / 1000;
+            const measuredOut = state.calibration.breathingOut.duration / 1000;
+            const targetIn = CONFIG.targetInhaleDuration / 1000;
+            const targetOut = CONFIG.targetExhaleDuration / 1000;
+
+            document.getElementById('result-inhale').textContent = `${measuredIn.toFixed(1)}s`;
+            document.getElementById('result-exhale').textContent = `${measuredOut.toFixed(1)}s`;
+            document.getElementById('result-target-in').textContent = `${targetIn.toFixed(1)}s`;
+            document.getElementById('result-target-out').textContent = `${targetOut.toFixed(1)}s`;
+
+            // Calculate initial adaptive durations
+            state.currentInhaleDuration = (state.calibration.breathingIn.duration + CONFIG.targetInhaleDuration) / 2;
+            state.currentExhaleDuration = (state.calibration.breathingOut.duration + CONFIG.targetExhaleDuration) / 2;
+
+            // Generate adjustment hint
+            let hint = '';
+            const inDiff = targetIn - measuredIn;
+            const outDiff = targetOut - measuredOut;
+
+            if (Math.abs(inDiff) < 0.5 && Math.abs(outDiff) < 0.5) {
+                hint = "Your breathing pace is close to the target. Great!";
+            } else {
+                const parts = [];
+                if (inDiff > 0.5) {
+                    parts.push(`breathe in ${inDiff.toFixed(1)}s slower`);
+                } else if (inDiff < -0.5) {
+                    parts.push(`breathe in ${Math.abs(inDiff).toFixed(1)}s faster`);
+                }
+                if (outDiff > 0.5) {
+                    parts.push(`breathe out ${outDiff.toFixed(1)}s slower`);
+                } else if (outDiff < -0.5) {
+                    parts.push(`breathe out ${Math.abs(outDiff).toFixed(1)}s faster`);
+                }
+                hint = `To match the target, try to ${parts.join(' and ')}.`;
+            }
+
+            document.getElementById('adjustment-hint').textContent = hint;
+
+            // Speak the adjustment hint
+            speak(hint);
+        }
+
+        function updateCalibrationProgress(step, total) {
+            const progress = (step / total) * 100;
             document.getElementById('calibration-progress').style.width = `${progress}%`;
-            document.getElementById('calibration-progress-text').textContent = `Step ${step} of 3`;
+            document.getElementById('calibration-progress-text').textContent = `Step ${step} of ${total}`;
         }
 
         // ============================================
         // SPHERE ANIMATION
         // ============================================
-        function animateSphere(fillId, fromPercent, toPercent, duration) {
+        function setSpherePercent(fillId, percent) {
+            const fill = document.getElementById(fillId);
+            if (!fill) return;
+
+            percent = Math.max(0, Math.min(100, percent));
+            fill.style.height = `${percent}%`;
+
+            if (percent > 90) {
+                fill.style.borderRadius = '90px';
+            } else {
+                fill.style.borderRadius = '0 0 90px 90px';
+            }
+        }
+
+        function animateSphere(fillId, fromPercent, toPercent, duration, callback) {
             const fill = document.getElementById(fillId);
             if (!fill) return;
 
@@ -846,48 +1160,41 @@
                     : 1 - Math.pow(-2 * progress + 2, 2) / 2;
 
                 const currentPercent = startPercent + (endPercent - startPercent) * eased;
-                fill.style.height = `${currentPercent}%`;
-
-                // Update border radius based on fill level
-                if (currentPercent > 90) {
-                    fill.style.borderRadius = '90px';
-                } else {
-                    fill.style.borderRadius = '0 0 90px 90px';
-                }
+                setSpherePercent(fillId, currentPercent);
 
                 if (progress < 1) {
                     requestAnimationFrame(animate);
+                } else if (callback) {
+                    callback();
                 }
             };
 
             animate();
         }
 
-        function updateUserSphere(breathLevel) {
-            const fill = document.getElementById('user-fill');
-            if (!fill) return;
+        // User sphere animation based on detected breathing
+        function startUserSphereAnimation(fromPercent, toPercent, duration) {
+            state.userSpherePercent = fromPercent;
+            state.userSphereTarget = toPercent;
+            state.userAnimationStart = Date.now();
+            state.userAnimationDuration = duration;
+        }
 
-            // Normalize breath level based on calibration
-            const silenceLevel = state.calibration.silence.level;
-            const breathingLevel = Math.max(
-                state.calibration.breathingIn.level,
-                state.calibration.breathingOut.level
-            );
+        function updateUserSphereFromBreathing() {
+            const elapsed = Date.now() - state.userAnimationStart;
+            const progress = Math.min(elapsed / state.userAnimationDuration, 1);
 
-            const normalized = Math.max(0, Math.min(1,
-                (breathLevel - silenceLevel) / (breathingLevel - silenceLevel + 0.01)
-            ));
+            // Ease in-out
+            const eased = progress < 0.5
+                ? 2 * progress * progress
+                : 1 - Math.pow(-2 * progress + 2, 2) / 2;
 
-            const percent = normalized * 100;
-            fill.style.height = `${percent}%`;
+            const currentPercent = state.userSpherePercent +
+                (state.userSphereTarget - state.userSpherePercent) * eased;
 
-            if (percent > 90) {
-                fill.style.borderRadius = '90px';
-            } else {
-                fill.style.borderRadius = '0 0 90px 90px';
-            }
+            setSpherePercent('user-fill', currentPercent);
 
-            return normalized;
+            return progress;
         }
 
         // ============================================
@@ -899,7 +1206,12 @@
             state.totalBreaths = 0;
             state.meditationStartTime = Date.now();
 
+            // Reset user sphere
+            setSpherePercent('user-fill', 0);
+            setSpherePercent('guide-fill', 0);
+
             showScreen('meditation-screen');
+            document.getElementById('talking-warning').textContent = '';
 
             speak("Let's begin. Find a comfortable position and relax.", () => {
                 setTimeout(() => runMeditationRound(), 2000);
@@ -916,6 +1228,7 @@
 
             document.getElementById('round-counter').textContent =
                 `Round ${state.currentRound} of ${CONFIG.totalRounds}`;
+            document.getElementById('talking-warning').textContent = '';
 
             // Breathe In
             await breatheIn();
@@ -931,6 +1244,12 @@
 
             state.totalBreaths++;
 
+            // Adapt timing towards target for next round
+            state.currentInhaleDuration = state.currentInhaleDuration +
+                (CONFIG.targetInhaleDuration - state.currentInhaleDuration) * CONFIG.adaptationRate;
+            state.currentExhaleDuration = state.currentExhaleDuration +
+                (CONFIG.targetExhaleDuration - state.currentExhaleDuration) * CONFIG.adaptationRate;
+
             // Continue to next round
             setTimeout(() => runMeditationRound(), 500);
         }
@@ -942,32 +1261,52 @@
 
                 speak("Breathe in");
 
-                // Animate guide sphere
-                animateSphere('guide-fill', 0, 100, CONFIG.breatheInDuration);
+                const duration = CONFIG.targetInhaleDuration;
+                const userDuration = state.currentInhaleDuration;
 
-                // Monitor user breathing
+                // Animate guide sphere (always at target pace)
+                animateSphere('guide-fill', 0, 100, duration);
+
+                // Start user sphere animation (at adaptive pace)
+                startUserSphereAnimation(0, 100, userDuration);
+
                 const syncSamples = [];
                 const startTime = Date.now();
+                let talkingDetectedThisPhase = false;
 
                 const countdownInterval = setInterval(() => {
-                    const remaining = Math.ceil((CONFIG.breatheInDuration - (Date.now() - startTime)) / 1000);
+                    const remaining = Math.ceil((duration - (Date.now() - startTime)) / 1000);
                     document.getElementById('meditation-timer').textContent = Math.max(0, remaining);
                 }, 100);
 
                 const monitor = () => {
-                    if (Date.now() - startTime < CONFIG.breatheInDuration) {
-                        const level = getAudioLevel();
-                        const normalized = updateUserSphere(level);
+                    if (Date.now() - startTime < duration) {
+                        getAudioLevel(); // Update audio state
 
-                        // Calculate expected position
-                        const progress = (Date.now() - startTime) / CONFIG.breatheInDuration;
-                        syncSamples.push(Math.abs(normalized - progress));
+                        // Check for talking
+                        if (isTalkingDetected()) {
+                            document.getElementById('talking-warning').textContent =
+                                'Talking detected - please concentrate on breathing';
+                            talkingDetectedThisPhase = true;
+                        } else if (!talkingDetectedThisPhase) {
+                            document.getElementById('talking-warning').textContent = '';
+                        }
+
+                        // Update user sphere based on time (smooth animation)
+                        const userProgress = updateUserSphereFromBreathing();
+
+                        // Calculate guide progress for sync scoring
+                        const guideProgress = (Date.now() - startTime) / duration;
+                        syncSamples.push(Math.abs(userProgress - guideProgress));
 
                         setTimeout(monitor, 50);
                     } else {
                         clearInterval(countdownInterval);
 
-                        // Calculate sync score for this phase
+                        // Ensure spheres are at 100%
+                        setSpherePercent('user-fill', 100);
+
+                        // Calculate sync score
                         const avgDiff = syncSamples.reduce((a, b) => a + b, 0) / syncSamples.length;
                         const syncScore = Math.max(0, 100 - avgDiff * 200);
                         state.syncScores.push(syncScore);
@@ -988,30 +1327,51 @@
 
                 speak("Breathe out");
 
-                // Animate guide sphere
-                animateSphere('guide-fill', 100, 0, CONFIG.breatheOutDuration);
+                const duration = CONFIG.targetExhaleDuration;
+                const userDuration = state.currentExhaleDuration;
 
-                // Monitor user breathing
+                // Animate guide sphere (always at target pace)
+                animateSphere('guide-fill', 100, 0, duration);
+
+                // Start user sphere animation (at adaptive pace, going from 100 to 0)
+                startUserSphereAnimation(100, 0, userDuration);
+
                 const syncSamples = [];
                 const startTime = Date.now();
+                let talkingDetectedThisPhase = false;
 
                 const countdownInterval = setInterval(() => {
-                    const remaining = Math.ceil((CONFIG.breatheOutDuration - (Date.now() - startTime)) / 1000);
+                    const remaining = Math.ceil((duration - (Date.now() - startTime)) / 1000);
                     document.getElementById('meditation-timer').textContent = Math.max(0, remaining);
                 }, 100);
 
                 const monitor = () => {
-                    if (Date.now() - startTime < CONFIG.breatheOutDuration) {
-                        const level = getAudioLevel();
-                        const normalized = updateUserSphere(level);
+                    if (Date.now() - startTime < duration) {
+                        getAudioLevel();
 
-                        // Calculate expected position (decreasing)
-                        const progress = 1 - (Date.now() - startTime) / CONFIG.breatheOutDuration;
-                        syncSamples.push(Math.abs(normalized - progress));
+                        // Check for talking
+                        if (isTalkingDetected()) {
+                            document.getElementById('talking-warning').textContent =
+                                'Talking detected - please concentrate on breathing';
+                            talkingDetectedThisPhase = true;
+                        } else if (!talkingDetectedThisPhase) {
+                            document.getElementById('talking-warning').textContent = '';
+                        }
+
+                        // Update user sphere (smooth animation from 100 to 0)
+                        updateUserSphereFromBreathing();
+
+                        // For sync scoring
+                        const userProgress = (Date.now() - state.userAnimationStart) / state.userAnimationDuration;
+                        const guideProgress = (Date.now() - startTime) / duration;
+                        syncSamples.push(Math.abs(userProgress - guideProgress));
 
                         setTimeout(monitor, 50);
                     } else {
                         clearInterval(countdownInterval);
+
+                        // Ensure spheres are at 0%
+                        setSpherePercent('user-fill', 0);
 
                         const avgDiff = syncSamples.reduce((a, b) => a + b, 0) / syncSamples.length;
                         const syncScore = Math.max(0, 100 - avgDiff * 200);
@@ -1031,6 +1391,7 @@
                 state.currentPhase = 'hold';
                 document.getElementById('breathing-phase').textContent = 'Hold...';
                 document.getElementById('meditation-timer').textContent = '...';
+                document.getElementById('talking-warning').textContent = '';
                 setTimeout(resolve, CONFIG.holdDuration);
             });
         }
@@ -1136,6 +1497,9 @@
         });
 
         document.getElementById('restart-btn').addEventListener('click', () => {
+            // Reset adaptive timing
+            state.currentInhaleDuration = (state.calibration.breathingIn.duration + CONFIG.targetInhaleDuration) / 2;
+            state.currentExhaleDuration = (state.calibration.breathingOut.duration + CONFIG.targetExhaleDuration) / 2;
             showScreen('ready-screen');
         });
 
