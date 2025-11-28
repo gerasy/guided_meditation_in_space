@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guided Meditation - Breathing in Space</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #0a0a2a 100%);
+            min-height: 100vh;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        /* Starfield background */
+        .stars {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .star {
+            position: absolute;
+            background: #fff;
+            border-radius: 50%;
+            animation: twinkle 3s infinite ease-in-out;
+        }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+
+        /* Main container */
+        .container {
+            position: relative;
+            z-index: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        /* Screens */
+        .screen {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            text-shadow: 0 0 30px rgba(100, 150, 255, 0.5);
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            margin-bottom: 15px;
+            color: #8af;
+        }
+
+        p {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            color: #cce;
+        }
+
+        /* Buttons */
+        .btn {
+            background: linear-gradient(135deg, #4a6cf7 0%, #6a4cf7 100%);
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            color: #fff;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 30px rgba(100, 100, 255, 0.4);
+            margin: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 40px rgba(100, 100, 255, 0.6);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn.secondary {
+            background: linear-gradient(135deg, #3a4c87 0%, #4a3c87 100%);
+        }
+
+        /* Sphere container */
+        .spheres-container {
+            display: flex;
+            gap: 80px;
+            margin: 40px 0;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .sphere-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .sphere-label {
+            font-size: 1rem;
+            color: #8af;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        /* Sphere styling */
+        .sphere {
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            position: relative;
+            overflow: hidden;
+            background: radial-gradient(circle at 30% 30%, #1a2a5a, #0a1030);
+            box-shadow:
+                0 0 60px rgba(100, 150, 255, 0.3),
+                inset 0 0 60px rgba(50, 100, 200, 0.2);
+            transition: transform 0.1s ease-out;
+        }
+
+        .sphere-fill {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 0%;
+            background: linear-gradient(to top,
+                rgba(100, 200, 255, 0.8) 0%,
+                rgba(150, 200, 255, 0.6) 50%,
+                rgba(200, 220, 255, 0.4) 100%);
+            transition: height 0.15s ease-out;
+            border-radius: 0 0 90px 90px;
+        }
+
+        .sphere-fill::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 20px;
+            background: linear-gradient(to bottom,
+                rgba(255, 255, 255, 0.4),
+                transparent);
+            border-radius: 50%;
+            transform: translateY(-50%);
+        }
+
+        .sphere-glow {
+            position: absolute;
+            top: 10%;
+            left: 15%;
+            width: 30%;
+            height: 30%;
+            background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+
+        /* Guide sphere specific */
+        .sphere.guide {
+            border: 3px solid rgba(100, 200, 255, 0.5);
+        }
+
+        /* User sphere specific */
+        .sphere.user {
+            border: 3px solid rgba(150, 255, 150, 0.5);
+        }
+
+        .sphere.user .sphere-fill {
+            background: linear-gradient(to top,
+                rgba(100, 255, 150, 0.8) 0%,
+                rgba(150, 255, 180, 0.6) 50%,
+                rgba(200, 255, 220, 0.4) 100%);
+        }
+
+        /* Single sphere for calibration */
+        .single-sphere {
+            width: 200px;
+            height: 200px;
+        }
+
+        /* Progress indicator */
+        .progress-container {
+            width: 100%;
+            max-width: 400px;
+            margin: 20px 0;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4a6cf7, #8af);
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .progress-text {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: #aac;
+        }
+
+        /* Audio level indicator */
+        .audio-level {
+            width: 300px;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .audio-level-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4f8, #8f4);
+            transition: width 0.05s ease-out;
+            width: 0%;
+        }
+
+        /* Instructions display */
+        .instruction {
+            font-size: 1.5rem;
+            color: #fff;
+            margin: 20px 0;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
+        }
+
+        /* Calibration status */
+        .calibration-status {
+            display: flex;
+            gap: 30px;
+            margin: 20px 0;
+        }
+
+        .calibration-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+        }
+
+        .calibration-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #555;
+        }
+
+        .calibration-dot.complete {
+            background: #4f8;
+            box-shadow: 0 0 10px #4f8;
+        }
+
+        .calibration-dot.active {
+            background: #ff8;
+            box-shadow: 0 0 10px #ff8;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+        }
+
+        /* Timer display */
+        .timer {
+            font-size: 3rem;
+            font-weight: 300;
+            color: #8af;
+            margin: 10px 0;
+        }
+
+        /* Breathing phase indicator */
+        .breathing-phase {
+            font-size: 2rem;
+            color: #8af;
+            margin: 20px 0;
+            min-height: 50px;
+        }
+
+        /* Score/feedback */
+        .feedback {
+            font-size: 1.2rem;
+            color: #afc;
+            margin: 10px 0;
+        }
+
+        /* Settings panel */
+        .settings {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+
+        .settings-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            padding: 10px 15px;
+            border-radius: 10px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+
+        /* Round counter */
+        .round-counter {
+            font-size: 1rem;
+            color: #8af;
+            margin-bottom: 10px;
+        }
+
+        /* Completion screen */
+        .completion-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 15px;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            color: #8af;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #aac;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="stars" id="stars"></div>
+
+    <div class="container">
+        <!-- Welcome Screen -->
+        <div class="screen active" id="welcome-screen">
+            <h1>🌌 Breathing in Space</h1>
+            <p>Welcome to your guided meditation journey through the cosmos.<br>
+            We'll practice breathing exercises together, with visual guidance to help you sync your breath.</p>
+            <p>This experience uses your microphone to detect your breathing patterns.<br>
+            First, we'll calibrate the system to your unique breathing.</p>
+            <button class="btn" id="start-btn">Begin Journey</button>
+        </div>
+
+        <!-- Microphone Permission Screen -->
+        <div class="screen" id="permission-screen">
+            <h2>🎤 Microphone Access</h2>
+            <p>To detect your breathing, we need access to your microphone.<br>
+            Your audio is processed locally and never leaves your device.</p>
+            <button class="btn" id="permission-btn">Allow Microphone</button>
+            <p id="permission-error" style="color: #f88; display: none;"></p>
+        </div>
+
+        <!-- Calibration Screen -->
+        <div class="screen" id="calibration-screen">
+            <h2>🔧 Calibration Setup</h2>
+
+            <div class="calibration-status">
+                <div class="calibration-item">
+                    <div class="calibration-dot" id="cal-silence-dot"></div>
+                    <span>Silence</span>
+                </div>
+                <div class="calibration-item">
+                    <div class="calibration-dot" id="cal-talking-dot"></div>
+                    <span>Talking</span>
+                </div>
+                <div class="calibration-item">
+                    <div class="calibration-dot" id="cal-breathing-dot"></div>
+                    <span>Breathing</span>
+                </div>
+            </div>
+
+            <div class="instruction" id="calibration-instruction">
+                Preparing calibration...
+            </div>
+
+            <div class="sphere single-sphere" id="calibration-sphere">
+                <div class="sphere-fill" id="calibration-fill"></div>
+                <div class="sphere-glow"></div>
+            </div>
+
+            <div class="audio-level">
+                <div class="audio-level-fill" id="audio-level-fill"></div>
+            </div>
+
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="calibration-progress"></div>
+                </div>
+                <div class="progress-text" id="calibration-progress-text">Step 1 of 3</div>
+            </div>
+
+            <button class="btn" id="calibration-btn" style="display: none;">Continue</button>
+        </div>
+
+        <!-- Ready Screen -->
+        <div class="screen" id="ready-screen">
+            <h2>✨ Calibration Complete!</h2>
+            <p>Great! We've learned your breathing patterns.<br>
+            Now let's begin the guided meditation.</p>
+            <p>You'll see two spheres:<br>
+            <strong style="color: #8af;">Blue</strong> - Follow this guide<br>
+            <strong style="color: #8f8;">Green</strong> - Your actual breathing</p>
+            <p>Try to match your breathing to the guide sphere.</p>
+            <button class="btn" id="begin-meditation-btn">Start Meditation</button>
+        </div>
+
+        <!-- Meditation Screen -->
+        <div class="screen" id="meditation-screen">
+            <div class="round-counter" id="round-counter">Round 1 of 5</div>
+
+            <div class="breathing-phase" id="breathing-phase">Get Ready...</div>
+
+            <div class="spheres-container">
+                <div class="sphere-wrapper">
+                    <div class="sphere-label">Guide</div>
+                    <div class="sphere guide" id="guide-sphere">
+                        <div class="sphere-fill" id="guide-fill"></div>
+                        <div class="sphere-glow"></div>
+                    </div>
+                </div>
+                <div class="sphere-wrapper">
+                    <div class="sphere-label">You</div>
+                    <div class="sphere user" id="user-sphere">
+                        <div class="sphere-fill" id="user-fill"></div>
+                        <div class="sphere-glow"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="timer" id="meditation-timer">4</div>
+
+            <div class="feedback" id="feedback"></div>
+
+            <button class="btn secondary" id="stop-meditation-btn" style="margin-top: 20px;">End Session</button>
+        </div>
+
+        <!-- Completion Screen -->
+        <div class="screen" id="completion-screen">
+            <h2>🌟 Session Complete!</h2>
+            <p>Wonderful job on completing your breathing meditation.</p>
+
+            <div class="completion-stats">
+                <div class="stat-item">
+                    <div class="stat-value" id="stat-rounds">5</div>
+                    <div class="stat-label">Rounds Completed</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="stat-duration">0:00</div>
+                    <div class="stat-label">Total Duration</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="stat-sync">0%</div>
+                    <div class="stat-label">Average Sync</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="stat-breaths">0</div>
+                    <div class="stat-label">Total Breaths</div>
+                </div>
+            </div>
+
+            <button class="btn" id="restart-btn">Start Again</button>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // CONFIGURATION
+        // ============================================
+        const CONFIG = {
+            breatheInDuration: 4000,    // ms
+            breatheOutDuration: 4000,   // ms
+            holdDuration: 1000,         // ms between phases
+            totalRounds: 5,
+            calibrationDuration: 5000,  // ms per calibration step
+            audioSmoothingFactor: 0.3,
+            breathDetectionThreshold: 0.15
+        };
+
+        // ============================================
+        // STATE
+        // ============================================
+        const state = {
+            audioContext: null,
+            analyser: null,
+            microphone: null,
+            dataArray: null,
+            calibration: {
+                silence: { level: 0, variance: 0 },
+                talking: { level: 0, variance: 0 },
+                breathingIn: { level: 0, pattern: [] },
+                breathingOut: { level: 0, pattern: [] }
+            },
+            currentPhase: 'idle',
+            currentRound: 0,
+            meditationStartTime: 0,
+            syncScores: [],
+            totalBreaths: 0,
+            isListening: false,
+            smoothedLevel: 0
+        };
+
+        // ============================================
+        // AUDIO PROCESSING
+        // ============================================
+        async function initAudio() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    }
+                });
+
+                state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                state.analyser = state.audioContext.createAnalyser();
+                state.analyser.fftSize = 2048;
+                state.analyser.smoothingTimeConstant = 0.8;
+
+                state.microphone = state.audioContext.createMediaStreamSource(stream);
+                state.microphone.connect(state.analyser);
+
+                state.dataArray = new Uint8Array(state.analyser.frequencyBinCount);
+                state.isListening = true;
+
+                // Start audio monitoring loop
+                monitorAudio();
+
+                return true;
+            } catch (error) {
+                console.error('Audio init error:', error);
+                return false;
+            }
+        }
+
+        function getAudioLevel() {
+            if (!state.analyser || !state.isListening) return 0;
+
+            state.analyser.getByteFrequencyData(state.dataArray);
+
+            // Calculate RMS with focus on breathing frequencies (100-500 Hz)
+            const sampleRate = state.audioContext.sampleRate;
+            const binSize = sampleRate / state.analyser.fftSize;
+            const lowBin = Math.floor(100 / binSize);
+            const highBin = Math.floor(500 / binSize);
+
+            let sum = 0;
+            let count = 0;
+
+            for (let i = lowBin; i < highBin && i < state.dataArray.length; i++) {
+                sum += state.dataArray[i] * state.dataArray[i];
+                count++;
+            }
+
+            const rms = Math.sqrt(sum / count) / 255;
+
+            // Smooth the level
+            state.smoothedLevel = state.smoothedLevel * (1 - CONFIG.audioSmoothingFactor) +
+                                  rms * CONFIG.audioSmoothingFactor;
+
+            return state.smoothedLevel;
+        }
+
+        function monitorAudio() {
+            if (!state.isListening) return;
+
+            const level = getAudioLevel();
+            updateAudioLevelDisplay(level);
+
+            requestAnimationFrame(monitorAudio);
+        }
+
+        function updateAudioLevelDisplay(level) {
+            const fill = document.getElementById('audio-level-fill');
+            if (fill) {
+                fill.style.width = `${Math.min(level * 300, 100)}%`;
+            }
+        }
+
+        // ============================================
+        // TEXT TO SPEECH
+        // ============================================
+        function speak(text, callback) {
+            if ('speechSynthesis' in window) {
+                // Cancel any ongoing speech
+                window.speechSynthesis.cancel();
+
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.rate = 0.85;
+                utterance.pitch = 1;
+                utterance.volume = 0.8;
+
+                // Try to find a calm, clear voice
+                const voices = window.speechSynthesis.getVoices();
+                const preferredVoice = voices.find(v =>
+                    v.name.includes('Google') ||
+                    v.name.includes('Samantha') ||
+                    v.name.includes('Daniel')
+                );
+                if (preferredVoice) {
+                    utterance.voice = preferredVoice;
+                }
+
+                if (callback) {
+                    utterance.onend = callback;
+                }
+
+                window.speechSynthesis.speak(utterance);
+            } else {
+                // Fallback: just call callback after estimated time
+                if (callback) {
+                    setTimeout(callback, text.length * 80);
+                }
+            }
+        }
+
+        // ============================================
+        // CALIBRATION
+        // ============================================
+        async function runCalibration() {
+            // Step 1: Silence
+            await calibrateSilence();
+
+            // Step 2: Talking
+            await calibrateTalking();
+
+            // Step 3: Breathing
+            await calibrateBreathing();
+
+            // Show ready screen
+            showScreen('ready-screen');
+        }
+
+        function calibrateSilence() {
+            return new Promise((resolve) => {
+                document.getElementById('cal-silence-dot').classList.add('active');
+                updateCalibrationProgress(1);
+
+                speak("Let's start by calibrating silence. Please remain quiet and still for a few seconds.", () => {
+                    document.getElementById('calibration-instruction').textContent =
+                        "Stay quiet and still...";
+
+                    const samples = [];
+                    const startTime = Date.now();
+
+                    const collect = () => {
+                        if (Date.now() - startTime < CONFIG.calibrationDuration) {
+                            samples.push(getAudioLevel());
+                            setTimeout(collect, 50);
+                        } else {
+                            // Calculate average and variance
+                            const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
+                            const variance = samples.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / samples.length;
+
+                            state.calibration.silence = { level: avg, variance: variance };
+
+                            document.getElementById('cal-silence-dot').classList.remove('active');
+                            document.getElementById('cal-silence-dot').classList.add('complete');
+
+                            speak("Good. Silence calibrated.", resolve);
+                        }
+                    };
+
+                    setTimeout(collect, 500);
+                });
+            });
+        }
+
+        function calibrateTalking() {
+            return new Promise((resolve) => {
+                document.getElementById('cal-talking-dot').classList.add('active');
+                updateCalibrationProgress(2);
+
+                speak("Now, please speak normally for a few seconds. Count from one to ten, or say anything you like.", () => {
+                    document.getElementById('calibration-instruction').textContent =
+                        "Please speak now... (count 1 to 10)";
+
+                    const samples = [];
+                    const startTime = Date.now();
+
+                    const collect = () => {
+                        if (Date.now() - startTime < CONFIG.calibrationDuration) {
+                            samples.push(getAudioLevel());
+                            setTimeout(collect, 50);
+                        } else {
+                            const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
+                            const variance = samples.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / samples.length;
+
+                            state.calibration.talking = { level: avg, variance: variance };
+
+                            document.getElementById('cal-talking-dot').classList.remove('active');
+                            document.getElementById('cal-talking-dot').classList.add('complete');
+
+                            speak("Thank you. Now we'll calibrate your breathing.", resolve);
+                        }
+                    };
+
+                    setTimeout(collect, 500);
+                });
+            });
+        }
+
+        function calibrateBreathing() {
+            return new Promise((resolve) => {
+                document.getElementById('cal-breathing-dot').classList.add('active');
+                updateCalibrationProgress(3);
+
+                // First, calibrate breathing in
+                speak("Take a slow, deep breath in through your nose. Breathe in now.", () => {
+                    document.getElementById('calibration-instruction').textContent =
+                        "Breathe IN slowly...";
+
+                    animateSphere('calibration-fill', 0, 100, 4000);
+
+                    const breathInSamples = [];
+                    const startTime = Date.now();
+
+                    const collectIn = () => {
+                        if (Date.now() - startTime < 4000) {
+                            breathInSamples.push(getAudioLevel());
+                            setTimeout(collectIn, 50);
+                        } else {
+                            state.calibration.breathingIn = {
+                                level: breathInSamples.reduce((a, b) => a + b, 0) / breathInSamples.length,
+                                pattern: breathInSamples
+                            };
+
+                            // Now calibrate breathing out
+                            speak("And now slowly breathe out through your mouth.", () => {
+                                document.getElementById('calibration-instruction').textContent =
+                                    "Breathe OUT slowly...";
+
+                                animateSphere('calibration-fill', 100, 0, 4000);
+
+                                const breathOutSamples = [];
+                                const outStartTime = Date.now();
+
+                                const collectOut = () => {
+                                    if (Date.now() - outStartTime < 4000) {
+                                        breathOutSamples.push(getAudioLevel());
+                                        setTimeout(collectOut, 50);
+                                    } else {
+                                        state.calibration.breathingOut = {
+                                            level: breathOutSamples.reduce((a, b) => a + b, 0) / breathOutSamples.length,
+                                            pattern: breathOutSamples
+                                        };
+
+                                        document.getElementById('cal-breathing-dot').classList.remove('active');
+                                        document.getElementById('cal-breathing-dot').classList.add('complete');
+
+                                        speak("Excellent! Calibration complete.", resolve);
+                                    }
+                                };
+
+                                setTimeout(collectOut, 500);
+                            });
+                        }
+                    };
+
+                    setTimeout(collectIn, 500);
+                });
+            });
+        }
+
+        function updateCalibrationProgress(step) {
+            const progress = (step / 3) * 100;
+            document.getElementById('calibration-progress').style.width = `${progress}%`;
+            document.getElementById('calibration-progress-text').textContent = `Step ${step} of 3`;
+        }
+
+        // ============================================
+        // SPHERE ANIMATION
+        // ============================================
+        function animateSphere(fillId, fromPercent, toPercent, duration) {
+            const fill = document.getElementById(fillId);
+            if (!fill) return;
+
+            const startTime = Date.now();
+            const startPercent = fromPercent;
+            const endPercent = toPercent;
+
+            const animate = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                // Ease in-out
+                const eased = progress < 0.5
+                    ? 2 * progress * progress
+                    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+                const currentPercent = startPercent + (endPercent - startPercent) * eased;
+                fill.style.height = `${currentPercent}%`;
+
+                // Update border radius based on fill level
+                if (currentPercent > 90) {
+                    fill.style.borderRadius = '90px';
+                } else {
+                    fill.style.borderRadius = '0 0 90px 90px';
+                }
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                }
+            };
+
+            animate();
+        }
+
+        function updateUserSphere(breathLevel) {
+            const fill = document.getElementById('user-fill');
+            if (!fill) return;
+
+            // Normalize breath level based on calibration
+            const silenceLevel = state.calibration.silence.level;
+            const breathingLevel = Math.max(
+                state.calibration.breathingIn.level,
+                state.calibration.breathingOut.level
+            );
+
+            const normalized = Math.max(0, Math.min(1,
+                (breathLevel - silenceLevel) / (breathingLevel - silenceLevel + 0.01)
+            ));
+
+            const percent = normalized * 100;
+            fill.style.height = `${percent}%`;
+
+            if (percent > 90) {
+                fill.style.borderRadius = '90px';
+            } else {
+                fill.style.borderRadius = '0 0 90px 90px';
+            }
+
+            return normalized;
+        }
+
+        // ============================================
+        // MEDITATION SESSION
+        // ============================================
+        async function startMeditation() {
+            state.currentRound = 0;
+            state.syncScores = [];
+            state.totalBreaths = 0;
+            state.meditationStartTime = Date.now();
+
+            showScreen('meditation-screen');
+
+            speak("Let's begin. Find a comfortable position and relax.", () => {
+                setTimeout(() => runMeditationRound(), 2000);
+            });
+        }
+
+        async function runMeditationRound() {
+            state.currentRound++;
+
+            if (state.currentRound > CONFIG.totalRounds) {
+                endMeditation();
+                return;
+            }
+
+            document.getElementById('round-counter').textContent =
+                `Round ${state.currentRound} of ${CONFIG.totalRounds}`;
+
+            // Breathe In
+            await breatheIn();
+
+            // Brief hold
+            await hold();
+
+            // Breathe Out
+            await breatheOut();
+
+            // Brief hold
+            await hold();
+
+            state.totalBreaths++;
+
+            // Continue to next round
+            setTimeout(() => runMeditationRound(), 500);
+        }
+
+        function breatheIn() {
+            return new Promise((resolve) => {
+                state.currentPhase = 'in';
+                document.getElementById('breathing-phase').textContent = 'Breathe In...';
+
+                speak("Breathe in");
+
+                // Animate guide sphere
+                animateSphere('guide-fill', 0, 100, CONFIG.breatheInDuration);
+
+                // Monitor user breathing
+                const syncSamples = [];
+                const startTime = Date.now();
+
+                const countdownInterval = setInterval(() => {
+                    const remaining = Math.ceil((CONFIG.breatheInDuration - (Date.now() - startTime)) / 1000);
+                    document.getElementById('meditation-timer').textContent = Math.max(0, remaining);
+                }, 100);
+
+                const monitor = () => {
+                    if (Date.now() - startTime < CONFIG.breatheInDuration) {
+                        const level = getAudioLevel();
+                        const normalized = updateUserSphere(level);
+
+                        // Calculate expected position
+                        const progress = (Date.now() - startTime) / CONFIG.breatheInDuration;
+                        syncSamples.push(Math.abs(normalized - progress));
+
+                        setTimeout(monitor, 50);
+                    } else {
+                        clearInterval(countdownInterval);
+
+                        // Calculate sync score for this phase
+                        const avgDiff = syncSamples.reduce((a, b) => a + b, 0) / syncSamples.length;
+                        const syncScore = Math.max(0, 100 - avgDiff * 200);
+                        state.syncScores.push(syncScore);
+
+                        updateFeedback(syncScore);
+                        resolve();
+                    }
+                };
+
+                monitor();
+            });
+        }
+
+        function breatheOut() {
+            return new Promise((resolve) => {
+                state.currentPhase = 'out';
+                document.getElementById('breathing-phase').textContent = 'Breathe Out...';
+
+                speak("Breathe out");
+
+                // Animate guide sphere
+                animateSphere('guide-fill', 100, 0, CONFIG.breatheOutDuration);
+
+                // Monitor user breathing
+                const syncSamples = [];
+                const startTime = Date.now();
+
+                const countdownInterval = setInterval(() => {
+                    const remaining = Math.ceil((CONFIG.breatheOutDuration - (Date.now() - startTime)) / 1000);
+                    document.getElementById('meditation-timer').textContent = Math.max(0, remaining);
+                }, 100);
+
+                const monitor = () => {
+                    if (Date.now() - startTime < CONFIG.breatheOutDuration) {
+                        const level = getAudioLevel();
+                        const normalized = updateUserSphere(level);
+
+                        // Calculate expected position (decreasing)
+                        const progress = 1 - (Date.now() - startTime) / CONFIG.breatheOutDuration;
+                        syncSamples.push(Math.abs(normalized - progress));
+
+                        setTimeout(monitor, 50);
+                    } else {
+                        clearInterval(countdownInterval);
+
+                        const avgDiff = syncSamples.reduce((a, b) => a + b, 0) / syncSamples.length;
+                        const syncScore = Math.max(0, 100 - avgDiff * 200);
+                        state.syncScores.push(syncScore);
+
+                        updateFeedback(syncScore);
+                        resolve();
+                    }
+                };
+
+                monitor();
+            });
+        }
+
+        function hold() {
+            return new Promise((resolve) => {
+                state.currentPhase = 'hold';
+                document.getElementById('breathing-phase').textContent = 'Hold...';
+                document.getElementById('meditation-timer').textContent = '...';
+                setTimeout(resolve, CONFIG.holdDuration);
+            });
+        }
+
+        function updateFeedback(score) {
+            const feedback = document.getElementById('feedback');
+            if (score > 80) {
+                feedback.textContent = 'Excellent! Keep it up!';
+                feedback.style.color = '#8f8';
+            } else if (score > 60) {
+                feedback.textContent = 'Good rhythm!';
+                feedback.style.color = '#afc';
+            } else if (score > 40) {
+                feedback.textContent = 'Try to match the guide';
+                feedback.style.color = '#ffa';
+            } else {
+                feedback.textContent = 'Follow the blue sphere';
+                feedback.style.color = '#faa';
+            }
+        }
+
+        function endMeditation() {
+            const duration = Math.floor((Date.now() - state.meditationStartTime) / 1000);
+            const minutes = Math.floor(duration / 60);
+            const seconds = duration % 60;
+
+            const avgSync = state.syncScores.length > 0
+                ? Math.round(state.syncScores.reduce((a, b) => a + b, 0) / state.syncScores.length)
+                : 0;
+
+            document.getElementById('stat-rounds').textContent = state.currentRound - 1;
+            document.getElementById('stat-duration').textContent =
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            document.getElementById('stat-sync').textContent = `${avgSync}%`;
+            document.getElementById('stat-breaths').textContent = state.totalBreaths;
+
+            speak("Wonderful. You've completed your meditation session. Take a moment to notice how you feel.");
+
+            showScreen('completion-screen');
+        }
+
+        // ============================================
+        // SCREEN NAVIGATION
+        // ============================================
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        // ============================================
+        // STAR FIELD
+        // ============================================
+        function createStarfield() {
+            const container = document.getElementById('stars');
+            const starCount = 150;
+
+            for (let i = 0; i < starCount; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                star.style.left = `${Math.random() * 100}%`;
+                star.style.top = `${Math.random() * 100}%`;
+                star.style.width = `${Math.random() * 3 + 1}px`;
+                star.style.height = star.style.width;
+                star.style.animationDelay = `${Math.random() * 3}s`;
+                container.appendChild(star);
+            }
+        }
+
+        // ============================================
+        // EVENT LISTENERS
+        // ============================================
+        document.getElementById('start-btn').addEventListener('click', () => {
+            showScreen('permission-screen');
+        });
+
+        document.getElementById('permission-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('permission-btn');
+            btn.disabled = true;
+            btn.textContent = 'Requesting access...';
+
+            const success = await initAudio();
+
+            if (success) {
+                showScreen('calibration-screen');
+                // Wait for voices to load
+                setTimeout(() => runCalibration(), 1000);
+            } else {
+                document.getElementById('permission-error').style.display = 'block';
+                document.getElementById('permission-error').textContent =
+                    'Could not access microphone. Please allow microphone access and try again.';
+                btn.disabled = false;
+                btn.textContent = 'Try Again';
+            }
+        });
+
+        document.getElementById('begin-meditation-btn').addEventListener('click', () => {
+            startMeditation();
+        });
+
+        document.getElementById('stop-meditation-btn').addEventListener('click', () => {
+            state.currentRound = CONFIG.totalRounds + 1;
+            endMeditation();
+        });
+
+        document.getElementById('restart-btn').addEventListener('click', () => {
+            showScreen('ready-screen');
+        });
+
+        // Load voices
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.getVoices();
+            window.speechSynthesis.onvoiceschanged = () => {
+                window.speechSynthesis.getVoices();
+            };
+        }
+
+        // Initialize
+        createStarfield();
+    </script>
+</body>
+</html>
