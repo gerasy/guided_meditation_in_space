@@ -402,6 +402,63 @@
             margin-top: 5px;
         }
 
+        /* Debug panel */
+        .debug-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            font-family: monospace;
+            font-size: 11px;
+            color: #8f8;
+            z-index: 1000;
+            min-width: 220px;
+        }
+
+        .debug-panel h4 {
+            margin: 0 0 10px 0;
+            color: #fff;
+            font-size: 12px;
+        }
+
+        .debug-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 3px 0;
+        }
+
+        .debug-label {
+            color: #aaa;
+        }
+
+        .debug-value {
+            color: #8f8;
+        }
+
+        .debug-value.warning {
+            color: #fa4;
+        }
+
+        .debug-value.good {
+            color: #4f8;
+        }
+
+        .debug-bar {
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            margin: 5px 0;
+            overflow: hidden;
+        }
+
+        .debug-bar-fill {
+            height: 100%;
+            background: #4f8;
+            transition: width 0.1s;
+        }
+
         /* Calibration results */
         .calibration-results {
             background: rgba(255, 255, 255, 0.05);
@@ -447,6 +504,41 @@
 </head>
 <body>
     <div class="stars" id="stars"></div>
+
+    <!-- Debug Panel -->
+    <div class="debug-panel" id="debug-panel" style="display: none;">
+        <h4>Audio Features</h4>
+        <div class="debug-row">
+            <span class="debug-label">Envelope:</span>
+            <span class="debug-value" id="debug-envelope">0.00</span>
+        </div>
+        <div class="debug-bar"><div class="debug-bar-fill" id="debug-envelope-bar"></div></div>
+        <div class="debug-row">
+            <span class="debug-label">Slope:</span>
+            <span class="debug-value" id="debug-slope">0.000</span>
+        </div>
+        <div class="debug-row">
+            <span class="debug-label">Centroid:</span>
+            <span class="debug-value" id="debug-centroid">0 Hz</span>
+        </div>
+        <div class="debug-row">
+            <span class="debug-label">ZCR:</span>
+            <span class="debug-value" id="debug-zcr">0.00</span>
+        </div>
+        <div class="debug-row">
+            <span class="debug-label">Breath Score:</span>
+            <span class="debug-value" id="debug-breath-score">0%</span>
+        </div>
+        <div class="debug-bar"><div class="debug-bar-fill" id="debug-score-bar" style="background: #4af;"></div></div>
+        <div class="debug-row">
+            <span class="debug-label">Phase:</span>
+            <span class="debug-value" id="debug-phase">idle</span>
+        </div>
+        <div class="debug-row">
+            <span class="debug-label">Talking:</span>
+            <span class="debug-value" id="debug-talking">No</span>
+        </div>
+    </div>
 
     <div class="container">
         <!-- Welcome Screen -->
@@ -615,10 +707,18 @@
             holdDuration: 1000,             // ms between phases
             totalRounds: 5,
             calibrationDuration: 6000,      // ms per calibration step
-            audioSmoothingFactor: 0.2,
-            breathThresholdMultiplier: 1.5, // Above silence * this = breathing
-            talkingVarianceThreshold: 0.02, // High variance = talking
-            adaptationRate: 0.5             // How fast to adapt to target (0.5 = average)
+            adaptationRate: 0.5,            // How fast to adapt to target (0.5 = average)
+            // Audio analysis settings
+            fftSize: 2048,
+            smoothingFactor: 0.3,           // For envelope smoothing
+            featureHistoryLength: 30,       // ~500ms at 60fps
+            // Breath detection weights (sum to 1.0)
+            weights: {
+                envelope: 0.35,             // Amplitude level
+                envelopeSlope: 0.25,        // Rate of change (slow = breathing)
+                spectralCentroid: 0.20,     // Frequency center (low = breathing)
+                zeroCrossingRate: 0.20      // Stability (low = breathing)
+            }
         };
 
         // ============================================
@@ -628,42 +728,77 @@
             audioContext: null,
             analyser: null,
             microphone: null,
-            dataArray: null,
-            calibration: {
-                silence: { level: 0, variance: 0 },
-                talking: { level: 0, variance: 0 },
-                breathingIn: { level: 0, duration: 0 },
-                breathingOut: { level: 0, duration: 0 }
+            frequencyData: null,
+            timeData: null,
+            isListening: false,
+
+            // Audio features (current frame)
+            features: {
+                envelope: 0,                // Smoothed amplitude (0-1)
+                envelopeSlope: 0,           // Rate of change (-1 to 1)
+                spectralCentroid: 0,        // Hz - center frequency
+                zeroCrossingRate: 0,        // Crossings per sample (0-0.5)
+                breathScore: 0              // Combined score (0-1)
             },
-            // Breathing detection
-            breathThreshold: 0.1,
-            isBreathing: false,
+
+            // Feature history for analysis
+            featureHistory: [],
+
+            // Calibration profiles
+            calibration: {
+                silence: {
+                    envelope: 0,
+                    spectralCentroid: 0,
+                    zeroCrossingRate: 0
+                },
+                talking: {
+                    envelope: 0,
+                    spectralCentroid: 0,
+                    zeroCrossingRate: 0,
+                    envelopeSlopeVariance: 0
+                },
+                breathingIn: {
+                    envelope: 0,
+                    spectralCentroid: 0,
+                    zeroCrossingRate: 0,
+                    duration: 0,
+                    envelopePattern: []      // Shape of breath
+                },
+                breathingOut: {
+                    envelope: 0,
+                    spectralCentroid: 0,
+                    zeroCrossingRate: 0,
+                    duration: 0,
+                    envelopePattern: []
+                }
+            },
+
+            // Breathing detection state
+            breathPhase: 'idle',            // 'idle', 'rising', 'falling'
             breathStartTime: 0,
             lastBreathDuration: 0,
-            currentBreathPhase: 'idle', // 'in', 'out', 'idle'
+            breathConfidence: 0,            // How confident we are it's a breath
+
             // User sphere animation
             userSpherePercent: 0,
             userSphereTarget: 0,
             userAnimationStart: 0,
             userAnimationDuration: 4000,
+
             // Adaptive timing
             currentInhaleDuration: 4000,
             currentExhaleDuration: 4000,
+
             // Session state
             currentPhase: 'idle',
             currentRound: 0,
             meditationStartTime: 0,
             syncScores: [],
-            totalBreaths: 0,
-            isListening: false,
-            smoothedLevel: 0,
-            // Recent audio samples for variance calculation
-            recentSamples: [],
-            maxRecentSamples: 20
+            totalBreaths: 0
         };
 
         // ============================================
-        // AUDIO PROCESSING
+        // AUDIO PROCESSING - IMPROVED
         // ============================================
         async function initAudio() {
             try {
@@ -677,13 +812,15 @@
 
                 state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 state.analyser = state.audioContext.createAnalyser();
-                state.analyser.fftSize = 2048;
-                state.analyser.smoothingTimeConstant = 0.8;
+                state.analyser.fftSize = CONFIG.fftSize;
+                state.analyser.smoothingTimeConstant = 0.5;
 
                 state.microphone = state.audioContext.createMediaStreamSource(stream);
                 state.microphone.connect(state.analyser);
 
-                state.dataArray = new Uint8Array(state.analyser.frequencyBinCount);
+                // Both frequency and time domain data
+                state.frequencyData = new Uint8Array(state.analyser.frequencyBinCount);
+                state.timeData = new Float32Array(state.analyser.fftSize);
                 state.isListening = true;
 
                 // Start audio monitoring loop
@@ -696,95 +833,261 @@
             }
         }
 
-        function getAudioLevel() {
-            if (!state.analyser || !state.isListening) return 0;
+        // Extract all audio features for current frame
+        function extractFeatures() {
+            if (!state.analyser || !state.isListening) {
+                return state.features;
+            }
 
-            state.analyser.getByteFrequencyData(state.dataArray);
+            // Get both frequency and time domain data
+            state.analyser.getByteFrequencyData(state.frequencyData);
+            state.analyser.getFloatTimeDomainData(state.timeData);
 
-            // Calculate RMS with focus on breathing frequencies (100-500 Hz)
             const sampleRate = state.audioContext.sampleRate;
-            const binSize = sampleRate / state.analyser.fftSize;
-            const lowBin = Math.floor(100 / binSize);
-            const highBin = Math.floor(500 / binSize);
+            const prevEnvelope = state.features.envelope;
+
+            // 1. ENVELOPE (RMS amplitude) - focus on breathing frequencies
+            const binSize = sampleRate / CONFIG.fftSize;
+            const lowBin = Math.floor(80 / binSize);   // 80 Hz
+            const highBin = Math.floor(600 / binSize); // 600 Hz
 
             let sum = 0;
-            let count = 0;
+            let weightedSum = 0;
+            let totalWeight = 0;
 
-            for (let i = lowBin; i < highBin && i < state.dataArray.length; i++) {
-                sum += state.dataArray[i] * state.dataArray[i];
-                count++;
+            for (let i = lowBin; i < highBin && i < state.frequencyData.length; i++) {
+                const magnitude = state.frequencyData[i] / 255;
+                sum += magnitude * magnitude;
+
+                // For spectral centroid
+                const freq = i * binSize;
+                weightedSum += freq * magnitude;
+                totalWeight += magnitude;
             }
 
-            const rms = Math.sqrt(sum / count) / 255;
+            const rms = Math.sqrt(sum / (highBin - lowBin));
 
-            // Smooth the level
-            state.smoothedLevel = state.smoothedLevel * (1 - CONFIG.audioSmoothingFactor) +
-                                  rms * CONFIG.audioSmoothingFactor;
+            // Smooth the envelope
+            state.features.envelope = state.features.envelope * (1 - CONFIG.smoothingFactor) +
+                                      rms * CONFIG.smoothingFactor;
 
-            // Track recent samples for variance calculation
-            state.recentSamples.push(state.smoothedLevel);
-            if (state.recentSamples.length > state.maxRecentSamples) {
-                state.recentSamples.shift();
+            // 2. ENVELOPE SLOPE (rate of change)
+            // Breathing has slow, gradual changes; speech is rapid
+            const rawSlope = state.features.envelope - prevEnvelope;
+            state.features.envelopeSlope = rawSlope;
+
+            // 3. SPECTRAL CENTROID (center of mass of spectrum)
+            // Breathing is lower frequency, speech is higher
+            state.features.spectralCentroid = totalWeight > 0 ? weightedSum / totalWeight : 0;
+
+            // 4. ZERO CROSSING RATE (from time domain)
+            // Breathing has fewer zero crossings than speech
+            let zeroCrossings = 0;
+            for (let i = 1; i < state.timeData.length; i++) {
+                if ((state.timeData[i] >= 0 && state.timeData[i - 1] < 0) ||
+                    (state.timeData[i] < 0 && state.timeData[i - 1] >= 0)) {
+                    zeroCrossings++;
+                }
+            }
+            state.features.zeroCrossingRate = zeroCrossings / state.timeData.length;
+
+            // Store in history
+            state.featureHistory.push({
+                envelope: state.features.envelope,
+                envelopeSlope: state.features.envelopeSlope,
+                spectralCentroid: state.features.spectralCentroid,
+                zeroCrossingRate: state.features.zeroCrossingRate,
+                timestamp: Date.now()
+            });
+
+            if (state.featureHistory.length > CONFIG.featureHistoryLength) {
+                state.featureHistory.shift();
             }
 
-            return state.smoothedLevel;
+            // 5. Calculate BREATH SCORE
+            state.features.breathScore = calculateBreathScore();
+
+            return state.features;
         }
 
-        function getCurrentVariance() {
-            if (state.recentSamples.length < 5) return 0;
-            const avg = state.recentSamples.reduce((a, b) => a + b, 0) / state.recentSamples.length;
-            return state.recentSamples.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / state.recentSamples.length;
+        // Calculate how likely current audio is breathing (0-1)
+        function calculateBreathScore() {
+            const cal = state.calibration;
+            const f = state.features;
+
+            // Need calibration data
+            if (cal.silence.envelope === 0) return 0;
+
+            let score = 0;
+
+            // 1. Envelope score: above silence, below talking
+            const envelopeAboveSilence = f.envelope > cal.silence.envelope * 1.3;
+            const envelopeBelowTalking = f.envelope < cal.talking.envelope * 0.8;
+            const envelopeInBreathRange = envelopeAboveSilence && envelopeBelowTalking;
+
+            if (envelopeInBreathRange) {
+                // Normalize to 0-1 within breathing range
+                const breathEnv = Math.max(cal.breathingIn.envelope, cal.breathingOut.envelope);
+                const normalizedEnv = Math.min(1, f.envelope / (breathEnv + 0.01));
+                score += CONFIG.weights.envelope * normalizedEnv;
+            }
+
+            // 2. Envelope slope score: breathing changes slowly
+            const slopeVariance = getRecentSlopeVariance();
+            const talkingSlopeVar = cal.talking.envelopeSlopeVariance || 0.01;
+            const slopeScore = Math.max(0, 1 - (slopeVariance / talkingSlopeVar));
+            score += CONFIG.weights.envelopeSlope * slopeScore;
+
+            // 3. Spectral centroid score: breathing is low frequency
+            const breathCentroid = Math.max(cal.breathingIn.spectralCentroid, cal.breathingOut.spectralCentroid) || 300;
+            const talkingCentroid = cal.talking.spectralCentroid || 500;
+
+            if (f.spectralCentroid > 0 && f.spectralCentroid < talkingCentroid) {
+                const centroidScore = 1 - (f.spectralCentroid / talkingCentroid);
+                score += CONFIG.weights.spectralCentroid * Math.max(0, centroidScore);
+            }
+
+            // 4. Zero crossing rate score: breathing has fewer crossings
+            const breathZCR = Math.max(cal.breathingIn.zeroCrossingRate, cal.breathingOut.zeroCrossingRate) || 0.05;
+            const talkingZCR = cal.talking.zeroCrossingRate || 0.15;
+
+            if (f.zeroCrossingRate < talkingZCR) {
+                const zcrScore = 1 - (f.zeroCrossingRate / talkingZCR);
+                score += CONFIG.weights.zeroCrossingRate * Math.max(0, zcrScore);
+            }
+
+            return Math.max(0, Math.min(1, score));
         }
 
+        // Get variance of recent envelope slopes
+        function getRecentSlopeVariance() {
+            if (state.featureHistory.length < 5) return 0;
+
+            const slopes = state.featureHistory.slice(-10).map(f => f.envelopeSlope);
+            const avg = slopes.reduce((a, b) => a + b, 0) / slopes.length;
+            return slopes.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / slopes.length;
+        }
+
+        // Detect if user is talking (not breathing)
         function isTalkingDetected() {
-            const level = state.smoothedLevel;
-            const variance = getCurrentVariance();
-            const silenceLevel = state.calibration.silence.level;
-            const talkingLevel = state.calibration.talking.level;
-            const talkingVariance = state.calibration.talking.variance;
+            const f = state.features;
+            const cal = state.calibration;
 
-            // Talking has high level AND high variance (speech varies a lot)
-            // Breathing has moderate level but lower, steadier variance
-            const isHighLevel = level > (silenceLevel + talkingLevel) / 2;
-            const isHighVariance = variance > talkingVariance * 0.5;
+            if (cal.talking.envelope === 0) return false;
 
-            return isHighLevel && isHighVariance;
+            // High envelope + high spectral centroid + high ZCR = talking
+            const highEnvelope = f.envelope > cal.talking.envelope * 0.6;
+            const highCentroid = f.spectralCentroid > cal.talking.spectralCentroid * 0.7;
+            const highZCR = f.zeroCrossingRate > cal.talking.zeroCrossingRate * 0.6;
+            const highSlopeVariance = getRecentSlopeVariance() > (cal.talking.envelopeSlopeVariance || 0.005) * 0.5;
+
+            // Need multiple indicators to confirm talking
+            const talkingIndicators = [highEnvelope, highCentroid, highZCR, highSlopeVariance];
+            const talkingCount = talkingIndicators.filter(Boolean).length;
+
+            return talkingCount >= 3;
         }
 
-        function detectBreathingState(level) {
-            const threshold = state.breathThreshold;
-            const wasBreathing = state.isBreathing;
+        // Detect breath phase transitions
+        function detectBreathPhase() {
+            const f = state.features;
+            const cal = state.calibration;
+            const prevPhase = state.breathPhase;
 
-            state.isBreathing = level > threshold;
+            const silenceThreshold = cal.silence.envelope * 1.5;
+            const isActive = f.envelope > silenceThreshold;
+            const isRising = f.envelopeSlope > 0.002;
+            const isFalling = f.envelopeSlope < -0.002;
 
-            // Detect breath start
-            if (state.isBreathing && !wasBreathing) {
-                state.breathStartTime = Date.now();
+            // State machine for breath detection
+            if (!isActive) {
+                if (prevPhase === 'falling') {
+                    // Breath just ended
+                    state.lastBreathDuration = Date.now() - state.breathStartTime;
+                }
+                state.breathPhase = 'idle';
+            } else if (isRising && prevPhase !== 'rising') {
+                state.breathPhase = 'rising';
+                if (prevPhase === 'idle') {
+                    state.breathStartTime = Date.now();
+                }
+            } else if (isFalling && prevPhase === 'rising') {
+                state.breathPhase = 'falling';
             }
 
-            // Detect breath end
-            if (!state.isBreathing && wasBreathing && state.breathStartTime > 0) {
-                state.lastBreathDuration = Date.now() - state.breathStartTime;
-            }
+            // Calculate confidence based on breath score
+            state.breathConfidence = f.breathScore;
 
-            return state.isBreathing;
+            return state.breathPhase;
         }
 
         function monitorAudio() {
             if (!state.isListening) return;
 
-            const level = getAudioLevel();
-            updateAudioLevelDisplay(level);
+            extractFeatures();
+            detectBreathPhase();
+            updateAudioLevelDisplay();
 
             requestAnimationFrame(monitorAudio);
         }
 
-        function updateAudioLevelDisplay(level) {
+        function updateAudioLevelDisplay() {
             const fill = document.getElementById('audio-level-fill');
             if (fill) {
-                fill.style.width = `${Math.min(level * 300, 100)}%`;
+                // Show breath score instead of just level
+                const displayValue = state.features.breathScore * 100;
+                fill.style.width = `${Math.min(displayValue, 100)}%`;
+
+                // Color based on confidence
+                if (state.features.breathScore > 0.6) {
+                    fill.style.background = 'linear-gradient(90deg, #4f8, #8f4)';
+                } else if (state.features.breathScore > 0.3) {
+                    fill.style.background = 'linear-gradient(90deg, #ff8, #fa4)';
+                } else {
+                    fill.style.background = 'linear-gradient(90deg, #888, #666)';
+                }
             }
+
+            // Update debug panel
+            updateDebugPanel();
         }
+
+        function updateDebugPanel() {
+            const panel = document.getElementById('debug-panel');
+            if (!panel || panel.style.display === 'none') return;
+
+            const f = state.features;
+
+            document.getElementById('debug-envelope').textContent = f.envelope.toFixed(3);
+            document.getElementById('debug-envelope-bar').style.width = `${Math.min(f.envelope * 500, 100)}%`;
+
+            const slopeEl = document.getElementById('debug-slope');
+            slopeEl.textContent = f.envelopeSlope.toFixed(4);
+            slopeEl.className = 'debug-value' + (Math.abs(f.envelopeSlope) > 0.005 ? ' warning' : '');
+
+            document.getElementById('debug-centroid').textContent = `${f.spectralCentroid.toFixed(0)} Hz`;
+            document.getElementById('debug-zcr').textContent = f.zeroCrossingRate.toFixed(3);
+
+            const scoreEl = document.getElementById('debug-breath-score');
+            scoreEl.textContent = `${(f.breathScore * 100).toFixed(0)}%`;
+            scoreEl.className = 'debug-value' + (f.breathScore > 0.5 ? ' good' : '');
+            document.getElementById('debug-score-bar').style.width = `${f.breathScore * 100}%`;
+
+            document.getElementById('debug-phase').textContent = state.breathPhase;
+
+            const talkingEl = document.getElementById('debug-talking');
+            const talking = isTalkingDetected();
+            talkingEl.textContent = talking ? 'YES' : 'No';
+            talkingEl.className = 'debug-value' + (talking ? ' warning' : ' good');
+        }
+
+        // Toggle debug panel with 'D' key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'd' || e.key === 'D') {
+                const panel = document.getElementById('debug-panel');
+                panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+            }
+        });
 
         // ============================================
         // TEXT TO SPEECH
@@ -824,7 +1127,7 @@
         }
 
         // ============================================
-        // CALIBRATION
+        // CALIBRATION - IMPROVED
         // ============================================
         async function runCalibration() {
             // Step 1: Silence
@@ -839,12 +1142,51 @@
             // Step 4: Breathing Out
             await calibrateBreathingOut();
 
-            // Calculate breath threshold
-            state.breathThreshold = state.calibration.silence.level * CONFIG.breathThresholdMultiplier;
-
             // Show results and ready screen
             showCalibrationResults();
             showScreen('ready-screen');
+        }
+
+        // Collect feature samples over a duration
+        function collectFeatureSamples(durationMs) {
+            return new Promise((resolve) => {
+                const samples = [];
+                const startTime = Date.now();
+
+                const collect = () => {
+                    if (Date.now() - startTime < durationMs) {
+                        extractFeatures();
+                        samples.push({
+                            envelope: state.features.envelope,
+                            spectralCentroid: state.features.spectralCentroid,
+                            zeroCrossingRate: state.features.zeroCrossingRate,
+                            envelopeSlope: state.features.envelopeSlope
+                        });
+                        setTimeout(collect, 50);
+                    } else {
+                        resolve(samples);
+                    }
+                };
+
+                collect();
+            });
+        }
+
+        // Calculate average features from samples
+        function averageFeatures(samples) {
+            if (samples.length === 0) return { envelope: 0, spectralCentroid: 0, zeroCrossingRate: 0 };
+
+            const sum = samples.reduce((acc, s) => ({
+                envelope: acc.envelope + s.envelope,
+                spectralCentroid: acc.spectralCentroid + s.spectralCentroid,
+                zeroCrossingRate: acc.zeroCrossingRate + s.zeroCrossingRate
+            }), { envelope: 0, spectralCentroid: 0, zeroCrossingRate: 0 });
+
+            return {
+                envelope: sum.envelope / samples.length,
+                spectralCentroid: sum.spectralCentroid / samples.length,
+                zeroCrossingRate: sum.zeroCrossingRate / samples.length
+            };
         }
 
         function calibrateSilence() {
@@ -852,32 +1194,20 @@
                 document.getElementById('cal-silence-dot').classList.add('active');
                 updateCalibrationProgress(1, 4);
 
-                speak("Let's start by calibrating silence. Please remain quiet and still for a few seconds.", () => {
+                speak("Let's start by calibrating silence. Please remain quiet and still for a few seconds.", async () => {
                     document.getElementById('calibration-instruction').textContent =
                         "Stay quiet and still...";
 
-                    const samples = [];
-                    const startTime = Date.now();
+                    await new Promise(r => setTimeout(r, 500));
+                    const samples = await collectFeatureSamples(CONFIG.calibrationDuration);
 
-                    const collect = () => {
-                        if (Date.now() - startTime < CONFIG.calibrationDuration) {
-                            samples.push(getAudioLevel());
-                            setTimeout(collect, 50);
-                        } else {
-                            // Calculate average and variance
-                            const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
-                            const variance = samples.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / samples.length;
+                    state.calibration.silence = averageFeatures(samples);
 
-                            state.calibration.silence = { level: avg, variance: variance };
+                    document.getElementById('cal-silence-dot').classList.remove('active');
+                    document.getElementById('cal-silence-dot').classList.add('complete');
 
-                            document.getElementById('cal-silence-dot').classList.remove('active');
-                            document.getElementById('cal-silence-dot').classList.add('complete');
-
-                            speak("Good. Silence calibrated.", resolve);
-                        }
-                    };
-
-                    setTimeout(collect, 500);
+                    console.log('Silence calibration:', state.calibration.silence);
+                    speak("Good. Silence calibrated.", resolve);
                 });
             });
         }
@@ -887,31 +1217,30 @@
                 document.getElementById('cal-talking-dot').classList.add('active');
                 updateCalibrationProgress(2, 4);
 
-                speak("Now, please speak normally for a few seconds. Count from one to ten, or say anything you like.", () => {
+                speak("Now, please speak normally for a few seconds. Count from one to ten, or say anything you like.", async () => {
                     document.getElementById('calibration-instruction').textContent =
                         "Please speak now... (count 1 to 10)";
 
-                    const samples = [];
-                    const startTime = Date.now();
+                    await new Promise(r => setTimeout(r, 500));
+                    const samples = await collectFeatureSamples(CONFIG.calibrationDuration);
 
-                    const collect = () => {
-                        if (Date.now() - startTime < CONFIG.calibrationDuration) {
-                            samples.push(getAudioLevel());
-                            setTimeout(collect, 50);
-                        } else {
-                            const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
-                            const variance = samples.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / samples.length;
+                    const avg = averageFeatures(samples);
 
-                            state.calibration.talking = { level: avg, variance: variance };
+                    // Also calculate envelope slope variance (speech has high variance)
+                    const slopes = samples.map(s => s.envelopeSlope);
+                    const slopeAvg = slopes.reduce((a, b) => a + b, 0) / slopes.length;
+                    const slopeVariance = slopes.reduce((a, b) => a + Math.pow(b - slopeAvg, 2), 0) / slopes.length;
 
-                            document.getElementById('cal-talking-dot').classList.remove('active');
-                            document.getElementById('cal-talking-dot').classList.add('complete');
-
-                            speak("Thank you. Now let's measure your breathing.", resolve);
-                        }
+                    state.calibration.talking = {
+                        ...avg,
+                        envelopeSlopeVariance: slopeVariance
                     };
 
-                    setTimeout(collect, 500);
+                    document.getElementById('cal-talking-dot').classList.remove('active');
+                    document.getElementById('cal-talking-dot').classList.add('complete');
+
+                    console.log('Talking calibration:', state.calibration.talking);
+                    speak("Thank you. Now let's measure your breathing.", resolve);
                 });
             });
         }
@@ -925,52 +1254,61 @@
                     document.getElementById('calibration-instruction').textContent =
                         "Breathe IN slowly... (we're measuring)";
 
-                    // Wait for breath to start, then measure duration
                     let breathStarted = false;
                     let breathStartTime = 0;
-                    let breathEndTime = 0;
-                    let peakLevel = 0;
-                    const samples = [];
+                    let peakEnvelope = 0;
+                    const featureSamples = [];
+                    const envelopePattern = [];
                     const startTime = Date.now();
-                    const maxWaitTime = 10000; // 10 seconds max
+                    const maxWaitTime = 12000;
 
-                    const tempThreshold = state.calibration.silence.level * 1.3;
+                    const silenceEnv = state.calibration.silence.envelope;
+                    const threshold = silenceEnv * 1.5;
 
                     const monitor = () => {
-                        const level = getAudioLevel();
-                        samples.push(level);
+                        extractFeatures();
+                        const f = state.features;
 
-                        // Update sphere based on current level
-                        const normalizedLevel = Math.min(1, Math.max(0,
-                            (level - state.calibration.silence.level) /
-                            (state.calibration.talking.level - state.calibration.silence.level + 0.01)
-                        ));
-                        setSpherePercent('calibration-fill', normalizedLevel * 100);
+                        // Update sphere visualization
+                        const displayLevel = Math.min(1, f.envelope / (state.calibration.talking.envelope + 0.01));
+                        setSpherePercent('calibration-fill', displayLevel * 100);
 
-                        if (!breathStarted && level > tempThreshold) {
+                        if (!breathStarted && f.envelope > threshold) {
                             breathStarted = true;
                             breathStartTime = Date.now();
                         }
 
                         if (breathStarted) {
-                            if (level > peakLevel) peakLevel = level;
+                            featureSamples.push({
+                                envelope: f.envelope,
+                                spectralCentroid: f.spectralCentroid,
+                                zeroCrossingRate: f.zeroCrossingRate
+                            });
+                            envelopePattern.push(f.envelope);
 
-                            // Check if breath ended (level dropped significantly from peak)
-                            if (level < peakLevel * 0.4 && Date.now() - breathStartTime > 1000) {
-                                breathEndTime = Date.now();
-                                const duration = breathEndTime - breathStartTime;
+                            if (f.envelope > peakEnvelope) {
+                                peakEnvelope = f.envelope;
+                            }
+
+                            // Breath ended when level drops significantly
+                            const timeSinceStart = Date.now() - breathStartTime;
+                            if (f.envelope < peakEnvelope * 0.35 && timeSinceStart > 1000) {
+                                const duration = Date.now() - breathStartTime;
+                                const avg = averageFeatures(featureSamples);
 
                                 state.calibration.breathingIn = {
-                                    level: peakLevel,
-                                    duration: duration
+                                    ...avg,
+                                    duration: duration,
+                                    envelopePattern: envelopePattern
                                 };
 
                                 document.getElementById('timing-info').textContent =
-                                    `Inhale detected: ${(duration / 1000).toFixed(1)} seconds`;
+                                    `Inhale: ${(duration / 1000).toFixed(1)}s | Centroid: ${avg.spectralCentroid.toFixed(0)}Hz`;
 
                                 document.getElementById('cal-breathin-dot').classList.remove('active');
                                 document.getElementById('cal-breathin-dot').classList.add('complete');
 
+                                console.log('Breathing In calibration:', state.calibration.breathingIn);
                                 speak(`Good. Your inhale was ${(duration / 1000).toFixed(1)} seconds.`, resolve);
                                 return;
                             }
@@ -979,10 +1317,13 @@
                         if (Date.now() - startTime < maxWaitTime) {
                             setTimeout(monitor, 50);
                         } else {
-                            // Timeout - use default
+                            // Timeout - use defaults
                             state.calibration.breathingIn = {
-                                level: Math.max(...samples),
-                                duration: 4000
+                                envelope: peakEnvelope || 0.1,
+                                spectralCentroid: 250,
+                                zeroCrossingRate: 0.05,
+                                duration: 4000,
+                                envelopePattern: []
                             };
                             document.getElementById('cal-breathin-dot').classList.remove('active');
                             document.getElementById('cal-breathin-dot').classList.add('complete');
@@ -1000,7 +1341,6 @@
                 document.getElementById('cal-breathout-dot').classList.add('active');
                 updateCalibrationProgress(4, 4);
 
-                // Reset sphere to full
                 setSpherePercent('calibration-fill', 100);
 
                 speak("Now slowly breathe out through your mouth. Start when you're ready.", () => {
@@ -1009,50 +1349,65 @@
 
                     let breathStarted = false;
                     let breathStartTime = 0;
-                    let peakLevel = 0;
-                    const samples = [];
+                    let peakEnvelope = 0;
+                    const featureSamples = [];
+                    const envelopePattern = [];
                     const startTime = Date.now();
-                    const maxWaitTime = 10000;
+                    const maxWaitTime = 12000;
 
-                    const tempThreshold = state.calibration.silence.level * 1.3;
+                    const silenceEnv = state.calibration.silence.envelope;
+                    const threshold = silenceEnv * 1.5;
 
                     const monitor = () => {
-                        const level = getAudioLevel();
-                        samples.push(level);
+                        extractFeatures();
+                        const f = state.features;
 
                         // Update sphere - goes from 100 to 0 based on time since breath started
                         if (breathStarted) {
                             const elapsed = Date.now() - breathStartTime;
-                            const estimatedDuration = 4000; // rough estimate
+                            const estimatedDuration = state.calibration.breathingIn.duration || 4000;
                             const percent = Math.max(0, 100 - (elapsed / estimatedDuration) * 100);
                             setSpherePercent('calibration-fill', percent);
                         }
 
-                        if (!breathStarted && level > tempThreshold) {
+                        if (!breathStarted && f.envelope > threshold) {
                             breathStarted = true;
                             breathStartTime = Date.now();
                         }
 
                         if (breathStarted) {
-                            if (level > peakLevel) peakLevel = level;
+                            featureSamples.push({
+                                envelope: f.envelope,
+                                spectralCentroid: f.spectralCentroid,
+                                zeroCrossingRate: f.zeroCrossingRate
+                            });
+                            envelopePattern.push(f.envelope);
+
+                            if (f.envelope > peakEnvelope) {
+                                peakEnvelope = f.envelope;
+                            }
 
                             // Check if breath ended
-                            if (level < peakLevel * 0.3 && Date.now() - breathStartTime > 1000) {
+                            const timeSinceStart = Date.now() - breathStartTime;
+                            if (f.envelope < peakEnvelope * 0.3 && timeSinceStart > 1000) {
                                 const duration = Date.now() - breathStartTime;
+                                const avg = averageFeatures(featureSamples);
 
                                 state.calibration.breathingOut = {
-                                    level: peakLevel,
-                                    duration: duration
+                                    ...avg,
+                                    duration: duration,
+                                    envelopePattern: envelopePattern
                                 };
 
                                 setSpherePercent('calibration-fill', 0);
 
                                 document.getElementById('timing-info').textContent =
-                                    `Exhale detected: ${(duration / 1000).toFixed(1)} seconds`;
+                                    `Exhale: ${(duration / 1000).toFixed(1)}s | Centroid: ${avg.spectralCentroid.toFixed(0)}Hz`;
 
                                 document.getElementById('cal-breathout-dot').classList.remove('active');
                                 document.getElementById('cal-breathout-dot').classList.add('complete');
 
+                                console.log('Breathing Out calibration:', state.calibration.breathingOut);
                                 speak(`Your exhale was ${(duration / 1000).toFixed(1)} seconds. Calibration complete.`, resolve);
                                 return;
                             }
@@ -1062,8 +1417,11 @@
                             setTimeout(monitor, 50);
                         } else {
                             state.calibration.breathingOut = {
-                                level: Math.max(...samples),
-                                duration: 4000
+                                envelope: peakEnvelope || 0.1,
+                                spectralCentroid: 200,
+                                zeroCrossingRate: 0.05,
+                                duration: 4000,
+                                envelopePattern: []
                             };
                             document.getElementById('cal-breathout-dot').classList.remove('active');
                             document.getElementById('cal-breathout-dot').classList.add('complete');
