@@ -802,15 +802,25 @@
         // ============================================
         async function initAudio() {
             try {
+                // Request microphone with mobile-friendly settings
                 const stream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: false,
                         noiseSuppression: false,
-                        autoGainControl: false
+                        autoGainControl: false,
+                        // Mobile-friendly constraints
+                        sampleRate: { ideal: 44100 },
+                        channelCount: { ideal: 1 }
                     }
                 });
 
                 state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+                // Resume AudioContext (required on mobile/iOS)
+                if (state.audioContext.state === 'suspended') {
+                    await state.audioContext.resume();
+                }
+
                 state.analyser = state.audioContext.createAnalyser();
                 state.analyser.fftSize = CONFIG.fftSize;
                 state.analyser.smoothingTimeConstant = 0.5;
@@ -826,10 +836,23 @@
                 // Start audio monitoring loop
                 monitorAudio();
 
+                console.log('Audio initialized successfully. Sample rate:', state.audioContext.sampleRate);
                 return true;
             } catch (error) {
                 console.error('Audio init error:', error);
                 return false;
+            }
+        }
+
+        // Resume audio context on user interaction (needed for mobile)
+        async function ensureAudioContextRunning() {
+            if (state.audioContext && state.audioContext.state === 'suspended') {
+                try {
+                    await state.audioContext.resume();
+                    console.log('AudioContext resumed');
+                } catch (e) {
+                    console.error('Failed to resume AudioContext:', e);
+                }
             }
         }
 
@@ -968,7 +991,10 @@
             return slopes.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / slopes.length;
         }
 
-        // Detect if user is talking (not breathing)
+        // Talking detection with debouncing
+        let talkingFrameCount = 0;
+        const TALKING_FRAMES_REQUIRED = 5; // Need 5 consecutive frames to confirm talking
+
         function isTalkingDetected() {
             const f = state.features;
             const cal = state.calibration;
@@ -976,43 +1002,70 @@
             if (cal.talking.envelope === 0) return false;
 
             // High envelope + high spectral centroid + high ZCR = talking
-            const highEnvelope = f.envelope > cal.talking.envelope * 0.6;
-            const highCentroid = f.spectralCentroid > cal.talking.spectralCentroid * 0.7;
-            const highZCR = f.zeroCrossingRate > cal.talking.zeroCrossingRate * 0.6;
-            const highSlopeVariance = getRecentSlopeVariance() > (cal.talking.envelopeSlopeVariance || 0.005) * 0.5;
+            const highEnvelope = f.envelope > cal.talking.envelope * 0.5;
+            const highCentroid = f.spectralCentroid > (cal.talking.spectralCentroid || 400) * 0.6;
+            const highZCR = f.zeroCrossingRate > (cal.talking.zeroCrossingRate || 0.1) * 0.5;
+            const highSlopeVariance = getRecentSlopeVariance() > (cal.talking.envelopeSlopeVariance || 0.005) * 0.3;
 
             // Need multiple indicators to confirm talking
             const talkingIndicators = [highEnvelope, highCentroid, highZCR, highSlopeVariance];
             const talkingCount = talkingIndicators.filter(Boolean).length;
 
-            return talkingCount >= 3;
+            // Require consistent detection over multiple frames
+            if (talkingCount >= 3) {
+                talkingFrameCount++;
+            } else {
+                talkingFrameCount = Math.max(0, talkingFrameCount - 1);
+            }
+
+            return talkingFrameCount >= TALKING_FRAMES_REQUIRED;
         }
 
-        // Detect breath phase transitions
+        // Detect breath phase transitions with hysteresis
+        let phaseStableFrames = 0;
+        const PHASE_STABLE_REQUIRED = 3; // Need 3 frames to change phase
+
         function detectBreathPhase() {
             const f = state.features;
             const cal = state.calibration;
             const prevPhase = state.breathPhase;
 
-            const silenceThreshold = cal.silence.envelope * 1.5;
+            const silenceThreshold = (cal.silence.envelope || 0.01) * 2;
             const isActive = f.envelope > silenceThreshold;
-            const isRising = f.envelopeSlope > 0.002;
-            const isFalling = f.envelopeSlope < -0.002;
 
-            // State machine for breath detection
+            // Use smoothed slope detection with wider deadzone
+            const slopeThreshold = 0.003;
+            const isRising = f.envelopeSlope > slopeThreshold;
+            const isFalling = f.envelopeSlope < -slopeThreshold;
+
+            // Determine target phase
+            let targetPhase = prevPhase;
+
             if (!isActive) {
-                if (prevPhase === 'falling') {
-                    // Breath just ended
-                    state.lastBreathDuration = Date.now() - state.breathStartTime;
+                targetPhase = 'idle';
+            } else if (isRising) {
+                targetPhase = 'rising';
+            } else if (isFalling) {
+                targetPhase = 'falling';
+            }
+            // If neither rising nor falling strongly, keep current phase (hysteresis)
+
+            // Only change phase after stable detection
+            if (targetPhase === prevPhase) {
+                phaseStableFrames = 0;
+            } else {
+                phaseStableFrames++;
+                if (phaseStableFrames >= PHASE_STABLE_REQUIRED) {
+                    // Actually change phase
+                    if (prevPhase === 'idle' && targetPhase === 'rising') {
+                        state.breathStartTime = Date.now();
+                    }
+                    if (prevPhase === 'falling' && targetPhase === 'idle') {
+                        state.lastBreathDuration = Date.now() - state.breathStartTime;
+                    }
+                    state.breathPhase = targetPhase;
+                    phaseStableFrames = 0;
                 }
-                state.breathPhase = 'idle';
-            } else if (isRising && prevPhase !== 'rising') {
-                state.breathPhase = 'rising';
-                if (prevPhase === 'idle') {
-                    state.breathStartTime = Date.now();
-                }
-            } else if (isFalling && prevPhase === 'rising') {
-                state.breathPhase = 'falling';
             }
 
             // Calculate confidence based on breath score
@@ -1093,6 +1146,12 @@
         // TEXT TO SPEECH
         // ============================================
         function speak(text, callback) {
+            // Also update instruction display as text fallback
+            const instructionEl = document.getElementById('calibration-instruction');
+            if (instructionEl && instructionEl.closest('.screen.active')) {
+                // Don't update if it's a detailed instruction already
+            }
+
             if ('speechSynthesis' in window) {
                 // Cancel any ongoing speech
                 window.speechSynthesis.cancel();
@@ -1107,21 +1166,42 @@
                 const preferredVoice = voices.find(v =>
                     v.name.includes('Google') ||
                     v.name.includes('Samantha') ||
-                    v.name.includes('Daniel')
+                    v.name.includes('Daniel') ||
+                    v.lang.startsWith('en')
                 );
                 if (preferredVoice) {
                     utterance.voice = preferredVoice;
                 }
 
-                if (callback) {
-                    utterance.onend = callback;
-                }
+                let callbackCalled = false;
+                const safeCallback = () => {
+                    if (!callbackCalled && callback) {
+                        callbackCalled = true;
+                        callback();
+                    }
+                };
 
-                window.speechSynthesis.speak(utterance);
+                utterance.onend = safeCallback;
+                utterance.onerror = (e) => {
+                    console.warn('Speech error:', e);
+                    safeCallback();
+                };
+
+                // Fallback timeout in case speech synthesis hangs (common on mobile)
+                const estimatedDuration = Math.max(2000, text.length * 80);
+                setTimeout(safeCallback, estimatedDuration);
+
+                try {
+                    window.speechSynthesis.speak(utterance);
+                } catch (e) {
+                    console.warn('Speech failed:', e);
+                    safeCallback();
+                }
             } else {
                 // Fallback: just call callback after estimated time
+                console.log('TTS not available, text:', text);
                 if (callback) {
-                    setTimeout(callback, text.length * 80);
+                    setTimeout(callback, Math.max(1500, text.length * 60));
                 }
             }
         }
@@ -1639,9 +1719,9 @@
 
                 const monitor = () => {
                     if (Date.now() - startTime < duration) {
-                        getAudioLevel(); // Update audio state
+                        extractFeatures(); // Update audio state
 
-                        // Check for talking
+                        // Check for talking (with debounce)
                         if (isTalkingDetected()) {
                             document.getElementById('talking-warning').textContent =
                                 'Talking detected - please concentrate on breathing';
@@ -1705,9 +1785,9 @@
 
                 const monitor = () => {
                     if (Date.now() - startTime < duration) {
-                        getAudioLevel();
+                        extractFeatures();
 
-                        // Check for talking
+                        // Check for talking (with debounce)
                         if (isTalkingDetected()) {
                             document.getElementById('talking-warning').textContent =
                                 'Talking detected - please concentrate on breathing';
@@ -1822,6 +1902,10 @@
         // EVENT LISTENERS
         // ============================================
         document.getElementById('start-btn').addEventListener('click', () => {
+            // Preload voices on user interaction (needed for mobile)
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.getVoices();
+            }
             showScreen('permission-screen');
         });
 
@@ -1830,13 +1914,20 @@
             btn.disabled = true;
             btn.textContent = 'Requesting access...';
 
-            const success = await initAudio();
+            try {
+                const success = await initAudio();
 
-            if (success) {
-                showScreen('calibration-screen');
-                // Wait for voices to load
-                setTimeout(() => runCalibration(), 1000);
-            } else {
+                if (success) {
+                    // Ensure audio is running (mobile fix)
+                    await ensureAudioContextRunning();
+                    showScreen('calibration-screen');
+                    // Wait for voices to load and audio to stabilize
+                    setTimeout(() => runCalibration(), 1500);
+                } else {
+                    throw new Error('Audio init failed');
+                }
+            } catch (error) {
+                console.error('Permission error:', error);
                 document.getElementById('permission-error').style.display = 'block';
                 document.getElementById('permission-error').textContent =
                     'Could not access microphone. Please allow microphone access and try again.';
@@ -1845,7 +1936,8 @@
             }
         });
 
-        document.getElementById('begin-meditation-btn').addEventListener('click', () => {
+        document.getElementById('begin-meditation-btn').addEventListener('click', async () => {
+            await ensureAudioContextRunning();
             startMeditation();
         });
 
@@ -1854,19 +1946,29 @@
             endMeditation();
         });
 
-        document.getElementById('restart-btn').addEventListener('click', () => {
+        document.getElementById('restart-btn').addEventListener('click', async () => {
+            await ensureAudioContextRunning();
             // Reset adaptive timing
             state.currentInhaleDuration = (state.calibration.breathingIn.duration + CONFIG.targetInhaleDuration) / 2;
             state.currentExhaleDuration = (state.calibration.breathingOut.duration + CONFIG.targetExhaleDuration) / 2;
             showScreen('ready-screen');
         });
 
-        // Load voices
+        // Load voices (with retry for mobile)
+        let voicesLoaded = false;
+        function loadVoices() {
+            if ('speechSynthesis' in window) {
+                const voices = window.speechSynthesis.getVoices();
+                if (voices.length > 0) {
+                    voicesLoaded = true;
+                    console.log('Loaded', voices.length, 'voices');
+                }
+            }
+        }
+
         if ('speechSynthesis' in window) {
-            window.speechSynthesis.getVoices();
-            window.speechSynthesis.onvoiceschanged = () => {
-                window.speechSynthesis.getVoices();
-            };
+            loadVoices();
+            window.speechSynthesis.onvoiceschanged = loadVoices;
         }
 
         // Initialize
